@@ -1,0 +1,1 @@
+console.log('[truco-client] bootstrap ok')

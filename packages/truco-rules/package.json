@@ -1,0 +1,9 @@
+{
+  "name": "truco-rules",
+  "version": "0.1.0",
+  "description": "Motor puro de regras do truco brasileiro (sem rede, sem UI, sem dependências externas)",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "files": ["src"]
+}
