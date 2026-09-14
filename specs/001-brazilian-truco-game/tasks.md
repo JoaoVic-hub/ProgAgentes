@@ -78,18 +78,18 @@ description: "Task list for Jogo de Truco Brasileiro Multijogador"
 
 ### Tests for User Story 1 (obrigatórios — persistência)
 
-- [ ] T019 [P] [US1] Escrever testes de persistência IndexedDB em `apps/client/tests/storage.test.ts`: escrever e restaurar estado de partida em andamento e gravar/ler `HistóricoPartida` de partida contra bots (FR-018/FR-019)
+- [X] T019 [P] [US1] Escrever testes de persistência IndexedDB em `apps/client/tests/storage.test.ts`: escrever e restaurar estado de partida em andamento e gravar/ler `HistóricoPartida` de partida contra bots (FR-018/FR-019)
 
 ### Implementation for User Story 1
 
-- [ ] T020 [P] [US1] Implementar camada IndexedDB em `apps/client/src/storage/localdb.ts` (abrir DB, salvar/ler partida em andamento, append de histórico `{partida_id, modo:'bots', formato, vencedor, placar_final, concluida_em}`)
-- [ ] T021 [P] [US1] Implementar bot local em `apps/client/src/local/bot.ts`: escolhe carta/pedido básico usando `truco-rules` (heurística simples v1)
-- [ ] T022 [US1] Implementar orquestrador local em `apps/client/src/local/game.ts`: máquina de estados mão/rodada via `truco-rules` (distribui, define manilha, valida jogadas, controla turno e pedidos) e persiste via `localdb`
-- [ ] T023 [US1] Criar cena de menu em `apps/client/src/scenes/menu.ts`: criar partida contra bots com formato 2/4/6 e rótulos em gíria ("Contra Bots", "Duplas", "Trios")
-- [ ] T024 [US1] Criar cena de mesa em `apps/client/src/scenes/table.ts`: renderizar mão própria, cartas na mesa, indicador de vez, placar por time e valor da mão (HUD básico), com ações de jogar carta e pedir truco/quero/corro (FR-014)
-- [ ] T025 [US1] Configurar bootstrap em `apps/client/src/main.ts`: instância Phaser (`scale: RESIZE`, carregando as cenas menu/table)
-- [ ] T026 [US1] Integrar fim de partida: detectar 12 via `truco-rules`, anunciar vencedor (fluxo visual básico) e gravar `HistóricoPartida` no IndexedDB (FR-019)
-- [ ] T027 [US1] Rodar ponta a ponta em `apps/client` (`npm run dev`): concluir partida contra bots até 12 pontos sem falhas de regra (SC-001)
+- [X] T020 [P] [US1] Implementar camada IndexedDB em `apps/client/src/storage/localdb.ts` (abrir DB, salvar/ler partida em andamento, append de histórico `{partida_id, modo:'bots', formato, vencedor, placar_final, concluida_em}`)
+- [X] T021 [P] [US1] Implementar bot local em `apps/client/src/local/bot.ts`: escolhe carta/pedido básico usando `truco-rules` (heurística simples v1)
+- [X] T022 [US1] Implementar orquestrador local em `apps/client/src/local/game.ts`: máquina de estados mão/rodada via `truco-rules` (distribui, define manilha, valida jogadas, controla turno e pedidos) e persiste via `localdb`
+- [X] T023 [US1] Criar cena de menu em `apps/client/src/scenes/menu.ts`: criar partida contra bots com formato 2/4/6 e rótulos em gíria ("Contra Bots", "Duplas", "Trios")
+- [X] T024 [US1] Criar cena de mesa em `apps/client/src/scenes/table.ts`: renderizar mão própria, cartas na mesa, indicador de vez, placar por time e valor da mão (HUD básico), com ações de jogar carta e pedir truco/quero/corro (FR-014)
+- [X] T025 [US1] Configurar bootstrap em `apps/client/src/main.ts`: instância Phaser (`scale: RESIZE`, carregando as cenas menu/table)
+- [X] T026 [US1] Integrar fim de partida: detectar 12 via `truco-rules`, anunciar vencedor (fluxo visual básico) e gravar `HistóricoPartida` no IndexedDB (FR-019)
+- [X] T027 [US1] Rodar ponta a ponta em `apps/client` (`npm run dev`): concluir partida contra bots até 12 pontos sem falhas de regra (SC-001)
 
 **Checkpoint**: US1 totalmente funcional e testável de forma independente (MVP).
 
