@@ -1,0 +1,31 @@
+html, body {
+  margin: 0;
+  background: #190A36;
+  color: #F4F0E4;
+  font-family: 'Archivo', system-ui, sans-serif;
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+}
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+}
+
+#arena {
+  width: min(90vw, 720px);
+  height: auto;
+  border: 3px solid #0A0714;
+  image-rendering: pixelated;
+}
+
+.hint {
+  font-size: 13px;
+  color: #B3A8D6;
+  margin: 0;
+}
