@@ -1,8 +1,8 @@
 /**
  * Replay dourado do L1 (Etapa 2B): uma partida gravada pelo piloto
- * automático (tools/golden.gen.ts) precisa concluir o L1 com EXATAMENTE a
- * mesma pontuação e o mesmo estado final. Pega qualquer mudança acidental de
- * física, pontuação ou progressão — e de determinismo.
+ * automático (tools/golden.gen.ts) precisa concluir o L1 com EXATAMENTE o
+ * mesmo tempo e o mesmo estado final. Pega qualquer mudança acidental de
+ * física, impulso, mísseis ou progressão — e de determinismo.
  *
  * Mudou tuning/regras de propósito? Rode `npm run golden` para regravar.
  */
@@ -18,17 +18,19 @@ interface GoldenFixture {
   readonly expected: {
     readonly phase: string;
     readonly tick: number;
-    readonly levelScore: number;
-    readonly runScore: number;
-    readonly rings: number;
+    readonly timeTicks: number;
+    readonly runTicks: number;
     readonly stars: number;
+    readonly hits: number;
+    readonly flips: number;
+    readonly bestMomentum: number;
     readonly hash: string;
   };
 }
 
 const golden = fixture as unknown as GoldenFixture;
 
-describe('Replay dourado do L1 (2B)', () => {
+describe('Replay dourado do L1', () => {
   it('a config atual é a mesma da gravação (senão: npm run golden)', () => {
     if (golden.recording.configHash !== configHash(DEFAULT_GAME_CONFIG)) {
       throw new Error(
@@ -38,16 +40,18 @@ describe('Replay dourado do L1 (2B)', () => {
     }
   });
 
-  it('reproduz a partida: conclui o L1 com a pontuação exata e o mesmo estado final', () => {
+  it('reproduz a partida: conclui o L1 com o tempo exato e o mesmo estado final', () => {
     const r = replayRecording(golden.recording, DEFAULT_GAME_CONFIG);
     const last = r.state.results[r.state.results.length - 1];
     expect({
       phase: r.state.phase,
       tick: r.state.tick,
-      levelScore: r.state.levelScore,
-      runScore: r.state.runScore,
-      rings: last?.rings,
+      timeTicks: last?.timeTicks,
+      runTicks: r.state.runTicks,
       stars: last?.stars,
+      hits: last?.hits,
+      flips: last?.flips,
+      bestMomentum: last?.bestMomentum,
       hash: r.hash,
     }).toEqual(golden.expected);
     expect(r.state.phase).toBe('level_complete');

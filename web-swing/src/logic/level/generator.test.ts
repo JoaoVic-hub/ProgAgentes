@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { generateLevel, LEVEL_Z_AFTER_FINISH, LEVEL_Z_BEFORE_START } from './generator';
 import { LEVEL_SPECS, getLevelSpec } from './specs';
 import { querySolidIds } from './broadphase';
-import { boxesOverlap, pointBoxDistance } from '../math/geom';
+import { boxesOverlap } from '../math/geom';
 import type { Level } from '../types';
 
 const LEVELS: Level[] = LEVEL_SPECS.map((spec) => generateLevel(spec));
@@ -87,11 +87,17 @@ describe('Gerador de níveis (determinismo e invariantes)', () => {
       expect(b.glassRatio).toBeGreaterThanOrEqual(a.glassRatio);
       expect(b.buildingHeight[1] - b.buildingHeight[0]).toBeGreaterThanOrEqual(a.buildingHeight[1] - a.buildingHeight[0]);
       expect(b.voids.count).toBeGreaterThanOrEqual(a.voids.count);
-      expect(b.rings.count).toBeGreaterThanOrEqual(a.rings.count);
-      expect(b.rings.radius).toBeLessThanOrEqual(a.rings.radius);
-      expect(b.rings.riskyRatio).toBeGreaterThanOrEqual(a.rings.riskyRatio);
-      expect(b.minRingRatio).toBeGreaterThanOrEqual(a.minRingRatio);
-      expect(b.parScore).toBeGreaterThan(a.parScore);
+      // ameaças: mais lançadores, salvas maiores, mísseis mais rápidos, mais ágeis, mais previsão, menos recarga
+      expect(b.threats.launchers).toBeGreaterThan(a.threats.launchers);
+      expect(b.threats.salvo).toBeGreaterThanOrEqual(a.threats.salvo);
+      expect(b.threats.missileSpeed).toBeGreaterThan(a.threats.missileSpeed);
+      expect(b.threats.turnRate).toBeGreaterThan(a.threats.turnRate);
+      expect(b.threats.lead).toBeGreaterThanOrEqual(a.threats.lead);
+      expect(b.threats.cooldown).toBeLessThan(a.threats.cooldown);
+      expect(Number(b.threats.crossfire)).toBeGreaterThanOrEqual(Number(a.threats.crossfire));
+      // tempos de estrela crescem com o comprimento; ouro sempre mais exigente que prata
+      expect(b.goldTime).toBeGreaterThan(a.goldTime);
+      expect(b.silverTime).toBeGreaterThan(a.silverTime);
     }
   });
 
@@ -122,31 +128,33 @@ describe('Broadphase em faixas de Z', () => {
   });
 });
 
-describe('Anéis, vãos, gruas e checkpoints (Etapa 2)', () => {
-  it('quantidade de anéis, dourados e cota batem com a spec', () => {
+describe('Lançadores, vãos, gruas e checkpoints (Etapa 2)', () => {
+  it('lançadores: quantidade da spec, em telhados de prédios comuns ou topo de gruas, em ordem, fora do corredor', () => {
     for (const level of LEVELS) {
-      const spec = level.spec;
-      expect(level.rings).toHaveLength(spec.rings.count);
-      expect(level.rings.filter((r) => r.gold)).toHaveLength(spec.rings.gold);
-      expect(level.ringQuota).toBe(Math.ceil(spec.minRingRatio * spec.rings.count));
-      level.rings.forEach((r, i) => {
-        expect(r.id).toBe(i);
-        if (r.gold) expect(r.risky).toBe(true); // dourado é sempre de risco
-        if (i > 0) expect(r.center.z).toBeGreaterThan(level.rings[i - 1].center.z);
-        expect(r.center.z).toBeLessThan(level.finishZ);
+      const t = level.spec.threats;
+      expect(level.launchers).toHaveLength(t.launchers);
+      const halfW = level.spec.avenueWidth / 2;
+      level.launchers.forEach((L, i) => {
+        expect(L.id).toBe(i);
+        if (i > 0) expect(L.pos.z).toBeGreaterThanOrEqual(level.launchers[i - 1].pos.z);
+        const roof = level.solids[L.solidId];
+        expect(['building', 'crane']).toContain(roof.kind);
+        expect(roof.side).toBe(L.side);
+        expect(L.pos.y).toBeGreaterThan(roof.box.max.y); // acima do telhado
+        expect(L.pos.z).toBeGreaterThanOrEqual(roof.box.min.z);
+        expect(L.pos.z).toBeLessThanOrEqual(roof.box.max.z);
+        expect(Math.abs(L.pos.x)).toBeGreaterThan(halfW); // sobre o prédio, não sobre a avenida
+        expect(L.pos.z).toBeGreaterThan(40);
+        expect(L.pos.z).toBeLessThan(level.finishZ);
       });
     }
   });
 
-  it('nenhum anel fica dentro (ou a menos de max(3 m, raio + 1 m)) de um sólido', () => {
-    for (const level of LEVELS) {
-      for (const r of level.rings) {
-        const clearance = Math.max(3, r.radius + 1);
-        for (const s of level.solids) {
-          if (s.kind === 'bounds') continue;
-          expect(pointBoxDistance(r.center, s.box)).toBeGreaterThanOrEqual(clearance - 1e-9);
-        }
-      }
+  it('fogo cruzado (L4+): os lançadores vêm em pares, um de cada lado', () => {
+    for (const level of LEVELS.filter((l) => l.spec.threats.crossfire)) {
+      const left = level.launchers.filter((L) => L.side < 0).length;
+      const right = level.launchers.filter((L) => L.side > 0).length;
+      expect(Math.abs(left - right)).toBeLessThanOrEqual(1);
     }
   });
 

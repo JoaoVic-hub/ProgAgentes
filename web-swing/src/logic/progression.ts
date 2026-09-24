@@ -1,33 +1,28 @@
 /**
- * Progressão da campanha (plano §1 "Vitória e derrota", Etapa 2B) — pura.
+ * Progressão da campanha contra o relógio (redesenho da Etapa 2) — pura.
  *
- *   countdown ─► playing ─┬─► respawning ─► playing        (caiu num vão; −1 vida)
- *                         ├─► level_complete                (chegada com a cota)
- *                         ├─► level_failed                  (chegada sem a cota; −1 vida)
- *                         └─► game_over                     (0 vidas)
+ *   countdown ─► playing ─┬─► respawning ─► playing   (caiu num vão; o relógio continua)
+ *                         └─► level_complete          (cruzou a chegada)
  *   level_complete ─(advanceAfterLevel)─► countdown do próximo nível | victory
- *   level_failed   ─(restartLevel)──────► countdown do mesmo nível (pontos do nível zerados)
  *
- * As fases terminais só saem pela cola (main), como no snake-duel (ADR-007):
- * step() nunca as avança sozinho. A campanha soma só os níveis concluídos.
+ * Sem vidas nem game over: o castigo de qualquer erro é TEMPO. O objetivo é
+ * terminar cada nível no menor tempo (estrelas por tempo). As fases
+ * terminais só saem pela cola (main), como no snake-duel (ADR-007).
+ *
+ * Tick da fase playing:
+ *   impulso → config efetiva → física do jogador → queda no vão →
+ *   mísseis (acerto → empurrão + atordoamento) → impulso → checkpoints → chegada
  */
 
-import type {
-  GameConfig,
-  GameEvent,
-  GamePhase,
-  GameState,
-  InputFrame,
-  Level,
-  LevelResult,
-  LifeLossReason,
-  SessionStats,
-} from './types';
+import type { GameConfig, GameEvent, GamePhase, GameState, InputFrame, Level, LevelResult, Player, SessionStats } from './types';
+import type { Vec3 } from './math/vec3';
+import { normalize } from './math/vec3';
 import { DEFAULT_GAME_CONFIG, secondsToTicks } from './config';
 import { computeAim, NO_AIM } from './aim';
 import { clampPitch } from './camera-rig';
 import { createPlayer, simulatePlayer } from './player/simulate';
-import { bodyCenter, breakStyle, createStyle, crossedRings, updateStyle } from './scoring';
+import { applyMomentum, createMomentum, momentumOnFall, updateMomentum } from './momentum';
+import { createThreats, resetThreats, stepThreats } from './threats';
 import { generateLevel } from './level/generator';
 import { getLevelSpec, LEVEL_SPECS } from './level/specs';
 
@@ -42,16 +37,16 @@ export interface RunOptions {
 /** O que passa de um nível para o outro na campanha. */
 interface Carry {
   readonly tick: number;
-  readonly runScore: number;
-  readonly lives: number;
+  readonly runTicks: number;
   readonly results: readonly LevelResult[];
   readonly ranked: boolean;
   readonly god: boolean;
   readonly seedOverride: number | null;
+  readonly startLevel: number;
   readonly stats: SessionStats;
 }
 
-export const TERMINAL_PHASES: readonly GamePhase[] = ['level_complete', 'level_failed', 'game_over', 'victory'];
+export const TERMINAL_PHASES: readonly GamePhase[] = ['level_complete', 'victory'];
 
 export function isTerminal(phase: GamePhase): boolean {
   return TERMINAL_PHASES.includes(phase);
@@ -64,17 +59,17 @@ export function loadLevel(levelNumber: number, seedOverride: number | null): Lev
 function carryOf(state: GameState): Carry {
   return {
     tick: state.tick,
-    runScore: state.runScore,
-    lives: state.lives,
+    runTicks: state.runTicks,
     results: state.results,
     ranked: state.ranked,
     god: state.god,
     seedOverride: state.seedOverride,
+    startLevel: state.startLevel,
     stats: state.stats,
   };
 }
 
-/** Estado limpo de um nível (anéis, combo e pontos do nível zerados). */
+/** Estado limpo de um nível (relógio, impulso e ameaças zerados). */
 function levelState(level: Level, config: GameConfig, carry: Carry, phase: GamePhase): GameState {
   const player = createPlayer(level.start, 0, 0.15);
   return {
@@ -87,12 +82,11 @@ function levelState(level: Level, config: GameConfig, carry: Carry, phase: GameP
     stats: carry.stats,
     phase,
     phaseTicks: phase === 'countdown' ? secondsToTicks(config.progression.countdownTime, config.tickHz) : 0,
-    ringsCollected: level.rings.map(() => false),
-    style: createStyle(),
-    progress: { ticks: 0, ringPoints: 0, stylePoints: 0, touchedStreet: false, falls: 0 },
-    levelScore: 0,
-    runScore: carry.runScore,
-    lives: carry.lives,
+    momentum: createMomentum(),
+    threats: createThreats(level),
+    progress: { ticks: 0, falls: 0, hits: 0, perfects: 0, flips: 0 },
+    runTicks: carry.runTicks,
+    startLevel: carry.startLevel,
     checkpointIndex: 0,
     ranked: carry.ranked,
     god: carry.god,
@@ -104,18 +98,18 @@ function levelState(level: Level, config: GameConfig, carry: Carry, phase: GameP
 /** Nova campanha, começando no countdown do nível inicial. */
 export function createRun(config: GameConfig = DEFAULT_GAME_CONFIG, opts: RunOptions = {}): GameState {
   const seedOverride = opts.seedOverride ?? null;
-  const level = loadLevel(opts.startLevel ?? 1, seedOverride);
+  const startLevel = getLevelSpec(opts.startLevel ?? 1).index;
   return levelState(
-    level,
+    loadLevel(startLevel, seedOverride),
     config,
     {
       tick: 0,
-      runScore: 0,
-      lives: config.progression.lives,
+      runTicks: 0,
       results: [],
       ranked: opts.ranked ?? true,
       god: opts.god ?? false,
       seedOverride,
+      startLevel,
       stats: { webShots: 0, webMisses: 0 },
     },
     'countdown',
@@ -127,12 +121,12 @@ export function sandboxState(level: Level, config: GameConfig = DEFAULT_GAME_CON
   return levelState(
     level,
     config,
-    { tick: 0, runScore: 0, lives: config.progression.lives, results: [], ranked: false, god: false, seedOverride: null, stats: { webShots: 0, webMisses: 0 } },
+    { tick: 0, runTicks: 0, results: [], ranked: false, god: false, seedOverride: null, startLevel: level.spec.index, stats: { webShots: 0, webMisses: 0 } },
     'playing',
   );
 }
 
-/** Depois de level_failed: o mesmo nível de novo, com os pontos do nível zerados. */
+/** O mesmo nível do zero (relógio zerado). Para o menu de pausa (Etapa 3). */
 export function restartLevel(state: GameState): GameState {
   return levelState(state.level, state.config, carryOf(state), 'countdown');
 }
@@ -145,61 +139,70 @@ export function advanceAfterLevel(state: GameState): GameState {
   return levelState(loadLevel(next, null), state.config, carryOf(state), 'countdown');
 }
 
-export function starsFor(rings: number, total: number, score: number, par: number, config: GameConfig): 1 | 2 | 3 {
-  if (total === 0 || rings / total < config.scoring.twoStarRingRatio) return 1;
-  return score >= par ? 3 : 2;
+/** Estrelas por tempo: ★★★ até goldTime, ★★ até silverTime, ★ concluindo. */
+export function starsFor(timeTicks: number, level: Level, config: GameConfig): 1 | 2 | 3 {
+  const seconds = timeTicks / config.tickHz;
+  if (seconds <= level.spec.goldTime) return 3;
+  if (seconds <= level.spec.silverTime) return 2;
+  return 1;
 }
 
-function spawnFor(state: GameState) {
+function spawnFor(state: GameState): Vec3 {
   const cp = state.checkpointIndex;
   return cp === 0 ? state.level.start : state.level.checkpoints[cp - 1].spawn;
 }
 
-/** Perde uma vida: respawn (queda), nível falhado (cota) ou game over. */
-function loseLife(state: GameState, reason: LifeLossReason, events: GameEvent[]): GameState {
-  const cfg = state.config;
-  const lives = state.god ? state.lives : state.lives - 1;
-  const broken = breakStyle(state.style, 'respawn');
-  const ev: GameEvent[] = [...events, { type: 'life_lost', reason, livesLeft: lives }, ...broken.events];
-  const progress = { ...state.progress, falls: state.progress.falls + (reason === 'quota' ? 0 : 1) };
-  const base = { ...state, lives: Math.max(0, lives), style: broken.style, progress };
-  if (lives <= 0) return { ...base, phase: 'game_over', phaseTicks: 0, events: [...ev, { type: 'game_over' }] };
-  if (reason === 'quota') return { ...base, phase: 'level_failed', phaseTicks: 0, events: ev };
-  return { ...base, phase: 'respawning', phaseTicks: secondsToTicks(cfg.progression.respawnTime, cfg.tickHz), events: ev };
+/** Míssil acertou: solta a teia, atordoa e empurra na direção do míssil (e um pouco para cima). */
+export function applyHit(player: Player, missileDir: Vec3, config: GameConfig): Player {
+  const mc = config.missiles;
+  const h = normalize({ x: missileDir.x, y: 0, z: missileDir.z });
+  return {
+    ...player,
+    vel: { x: player.vel.x + h.x * mc.knockback, y: player.vel.y + mc.knockUp, z: player.vel.z + h.z * mc.knockback },
+    rope: null,
+    mode: player.grounded ? 'ground' : 'air',
+    stunTicks: secondsToTicks(mc.hitStun, config.tickHz),
+    webBufferTicks: 0,
+    flipWindowTicks: 0,
+    flipAvailable: false,
+    wallTicks: 0,
+  };
 }
 
-/** Cruzou a chegada: conclui (com bônus e estrelas) ou falha pela cota. */
-function finishLevel(state: GameState): GameState {
+/** Caiu num vão: impulso zerado e respawn (o relógio continua correndo). */
+function fall(state: GameState, events: GameEvent[]): GameState {
   const cfg = state.config;
+  const mf = momentumOnFall(state.momentum);
+  return {
+    ...state,
+    momentum: mf.momentum,
+    progress: { ...state.progress, falls: state.progress.falls + 1 },
+    phase: 'respawning',
+    phaseTicks: secondsToTicks(cfg.progression.respawnTime, cfg.tickHz),
+    events: [...events, { type: 'fell' }, ...mf.events],
+  };
+}
+
+/** Cruzou a chegada: resultado com o tempo, estrelas e estatísticas. */
+function finishLevel(state: GameState): GameState {
   const level = state.level;
-  const rings = state.ringsCollected.filter(Boolean).length;
-  const total = level.rings.length;
-  if (rings < level.ringQuota && !state.god) {
-    return loseLife(state, 'quota', [...state.events, { type: 'level_failed', rings, quota: level.ringQuota }]);
-  }
-  const allRingsBonus = total > 0 && rings === total ? cfg.scoring.allRingsBonus : 0;
-  const noStreetBonus = state.progress.touchedStreet ? 0 : cfg.scoring.noStreetBonus;
-  const score = state.levelScore + allRingsBonus + noStreetBonus;
+  const p = state.progress;
   const result: LevelResult = {
     levelIndex: level.spec.index,
     levelName: level.spec.name,
-    score,
-    ringPoints: state.progress.ringPoints,
-    stylePoints: state.progress.stylePoints,
-    allRingsBonus,
-    noStreetBonus,
-    rings,
-    ringsTotal: total,
-    stars: starsFor(rings, total, score, level.spec.parScore, cfg),
-    timeTicks: state.progress.ticks,
-    bestMultiplier: state.style.bestMultiplier,
+    timeTicks: p.ticks,
+    stars: starsFor(p.ticks, level, state.config),
+    falls: p.falls,
+    hits: p.hits,
+    perfects: p.perfects,
+    flips: p.flips,
+    bestMomentum: state.momentum.best,
   };
   return {
     ...state,
     phase: 'level_complete',
     phaseTicks: 0,
-    levelScore: score,
-    runScore: state.runScore + score,
+    runTicks: state.runTicks + p.ticks,
     results: [...state.results, result],
     events: [...state.events, { type: 'level_complete', result }],
   };
@@ -217,46 +220,49 @@ export function stepCountdown(state: GameState, input: InputFrame): GameState {
 export function stepPlaying(state: GameState, input: InputFrame): GameState {
   const cfg = state.config;
   const level = state.level;
-  const sim = simulatePlayer(state, input);
-  const player = sim.player;
+  // o impulso acelera o balanço: a física deste tick roda com a config efetiva
+  const sim = simulatePlayer({ config: applyMomentum(cfg, state.momentum.value), level, player: state.player, aim: state.aim, stats: state.stats }, input);
+  let player = sim.player;
   const events: GameEvent[] = [...sim.events];
-  const moved = { ...state, tick: state.tick + 1, player, aim: sim.aim, stats: sim.stats };
+  const progress = { ...state.progress, ticks: state.progress.ticks + 1 };
+  const moved: GameState = { ...state, tick: state.tick + 1, player, aim: sim.aim, stats: sim.stats, progress };
 
-  if (player.pos.y < level.killY) {
-    return loseLife({ ...moved, progress: { ...state.progress, ticks: state.progress.ticks + 1 } }, 'fall', events);
+  if (player.pos.y < level.killY) return fall(moved, events);
+
+  const th = stepThreats(state.threats, level, player, state.player.pos, cfg, state.god);
+  events.push(...th.events);
+  if (th.hit) {
+    player = applyHit(player, th.hit.dir, cfg);
+    events.push({ type: 'player_hit', missileId: th.hit.missileId });
   }
 
-  const h = cfg.physics.height;
-  const hits = crossedRings(level, state.ringsCollected, bodyCenter(state.player.pos, h), bodyCenter(player.pos, h), cfg.scoring);
-  const ringsCollected = hits.length > 0 ? state.ringsCollected.map((c, i) => c || hits.includes(i)) : state.ringsCollected;
-  const su = updateStyle(state.style, player, sim.events, hits, level, cfg);
-  events.push(...su.events);
+  const mu = updateMomentum(state.momentum, player, state.player, sim.events, input, { hit: th.hit !== null }, cfg);
+  events.push(...mu.events);
 
   let checkpointIndex = state.checkpointIndex;
   while (checkpointIndex < level.checkpoints.length && player.pos.z >= level.checkpoints[checkpointIndex].z) {
     checkpointIndex += 1;
-    events.push({ type: 'checkpoint', index: checkpointIndex });
+    events.push({ type: 'checkpoint', index: checkpointIndex, timeTicks: progress.ticks });
   }
 
   const next: GameState = {
     ...moved,
-    ringsCollected,
-    style: su.style,
+    player,
+    momentum: mu.momentum,
+    threats: th.threats,
     progress: {
-      ...state.progress,
-      ticks: state.progress.ticks + 1,
-      ringPoints: state.progress.ringPoints + su.ringPoints,
-      stylePoints: state.progress.stylePoints + su.stylePoints,
-      touchedStreet: state.progress.touchedStreet || su.landedOnStreet,
+      ...progress,
+      hits: progress.hits + (th.hit ? 1 : 0),
+      perfects: progress.perfects + sim.events.filter((e) => e.type === 'web_released' && e.perfect).length,
+      flips: progress.flips + sim.events.filter((e) => e.type === 'flip').length,
     },
-    levelScore: state.levelScore + su.ringPoints + su.stylePoints,
     checkpointIndex,
     events,
   };
   return player.pos.z >= level.finishZ ? finishLevel(next) : next;
 }
 
-/** Reaparece parado no último checkpoint (anéis e pontos do nível mantidos). */
+/** Reaparece parado no último checkpoint; mísseis somem e os lançadores recarregam. */
 function respawn(state: GameState): GameState {
   const checkpoint = state.checkpointIndex;
   // botão "já apertado": precisa de um clique novo para lançar teia
@@ -265,6 +271,7 @@ function respawn(state: GameState): GameState {
     ...state,
     player,
     aim: computeAim(state.level, player, NO_AIM, state.config),
+    threats: resetThreats(state.threats),
     phase: 'playing',
     phaseTicks: 0,
     events: [{ type: 'respawned', checkpoint }],
@@ -272,13 +279,15 @@ function respawn(state: GameState): GameState {
 }
 
 export function stepRespawning(state: GameState, input: InputFrame): GameState {
-  const left = state.phaseTicks - 1;
   const player = { ...state.player, yaw: input.yaw, pitch: clampPitch(input.pitch, state.config.rig) };
-  if (left > 0) return { ...state, tick: state.tick + 1, player, phaseTicks: left, events: [] };
-  return respawn({ ...state, tick: state.tick + 1, player });
+  // o relógio continua correndo durante o respawn
+  const base = { ...state, tick: state.tick + 1, player, progress: { ...state.progress, ticks: state.progress.ticks + 1 } };
+  const left = state.phaseTicks - 1;
+  if (left > 0) return { ...base, phaseTicks: left, events: [] };
+  return respawn(base);
 }
 
-// ------------------------------------------------------------ atalhos de debug (N / K / R)
+// ------------------------------------------------------------ atalhos de debug (N / J / K / R)
 // Qualquer um deles marca o run como não ranqueado.
 
 /** N: coloca o jogador logo antes da chegada, indo para a frente. */
@@ -288,16 +297,33 @@ export function debugJumpToFinish(state: GameState): GameState {
   return { ...state, ranked: false, player: { ...p, vel: { x: 0, y: 0, z: 20 }, grounded: false, groundKind: null, mode: 'air' } };
 }
 
-/** K: perde uma vida como numa queda. */
-export function debugLoseLife(state: GameState): GameState {
+/** J: avança dz metros pelo meio da avenida, no ar (para testar trechos com lançadores e vãos). */
+export function debugWarpAhead(state: GameState, dz = 60): GameState {
   if (state.phase !== 'playing') return state;
-  return loseLife({ ...state, ranked: false }, 'debug', []);
+  const z = Math.min(state.player.pos.z + dz, state.level.finishZ - 1);
+  const p = createPlayer({ x: 0, y: 25, z }, state.player.yaw, state.player.pitch);
+  return { ...state, ranked: false, player: { ...p, vel: { x: 0, y: 0, z: 20 }, grounded: false, groundKind: null, mode: 'air', prevWebHeld: true } };
 }
 
-/** R: volta ao último checkpoint sem perder vida. */
+/** K: simula um acerto de míssil vindo de trás (para testar o impacto). */
+export function debugHit(state: GameState): GameState {
+  if (state.phase !== 'playing') return state;
+  const cfg = state.config;
+  const player = applyHit(state.player, { x: 0, y: 0, z: 1 }, cfg);
+  const mu = updateMomentum(state.momentum, player, state.player, [], { moveX: 0, moveZ: 0, yaw: 0, pitch: 0, webHeld: false, jumpPressed: false }, { hit: true }, cfg);
+  return {
+    ...state,
+    ranked: false,
+    player,
+    momentum: mu.momentum,
+    threats: { ...state.threats, invulnerableTicks: secondsToTicks(cfg.missiles.invulnerableTime, cfg.tickHz) },
+    progress: { ...state.progress, hits: state.progress.hits + 1 },
+    events: [...state.events, { type: 'player_hit', missileId: -1 }, ...mu.events],
+  };
+}
+
+/** R: volta ao último checkpoint (o relógio não volta). */
 export function debugRespawn(state: GameState): GameState {
   if (state.phase !== 'playing') return state;
-  const broken = breakStyle(state.style, 'respawn');
-  const r = respawn({ ...state, ranked: false, style: broken.style });
-  return { ...r, events: [...broken.events, ...r.events] };
+  return respawn({ ...state, ranked: false });
 }

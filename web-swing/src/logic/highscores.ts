@@ -1,9 +1,9 @@
 /**
- * Recordes (Etapa 2C) — funções puras.
+ * Recordes por tempo (redesenho da Etapa 2) — funções puras.
  *
- * - Tabela geral: top 10 por pontuação da campanha; empate → quem fez
- *   primeiro fica na frente (data mais antiga).
- * - Melhor por nível: pontuação, estrelas e tempo (estatística) só melhoram.
+ * - Tabela geral: top 10 de campanhas completas (L1 → L5) pelo MENOR tempo
+ *   total; empate → quem fez primeiro (data mais antiga).
+ * - Melhor por nível: melhor tempo e mais estrelas (cada campo só melhora).
  * - Runs não ranqueados (flags de debug que mudam o jogo) não entram.
  * A data vem de fora (a lógica não lê relógio): main passa Date.now().
  */
@@ -16,44 +16,55 @@ export const DEFAULT_NAME = 'Anônimo';
 
 export interface HighscoreEntry {
   readonly name: string;
-  readonly score: number;
-  /** Último nível alcançado na campanha (1..5). */
-  readonly levelReached: number;
-  readonly victory: boolean;
+  /** Tempo total da campanha em ms. */
+  readonly timeMs: number;
   /** Epoch em ms (desempate: o mais antigo fica na frente). */
   readonly date: number;
 }
 
 export interface LevelBest {
-  readonly score: number;
+  readonly bestTimeMs: number;
   readonly stars: 0 | 1 | 2 | 3;
-  /** Melhor tempo (estatística; não pontua). */
-  readonly bestTimeTicks: number | null;
 }
 
 export type BestByLevel = Readonly<Record<string, LevelBest>>;
 
-/** Caracteres de controle (C0/C1), espaços de largura zero e separadores de linha. */
-const INVISIBLE_CHARS = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028\u2029\ufeff]/g;
+/** Controle C0/C1, espaços de largura zero, separadores de linha e BOM. */
+function isInvisible(code: number): boolean {
+  return (
+    code <= 0x1f ||
+    (code >= 0x7f && code <= 0x9f) ||
+    (code >= 0x200b && code <= 0x200f) ||
+    code === 0x2028 ||
+    code === 0x2029 ||
+    code === 0xfeff
+  );
+}
 
-/** Nome exibível: sem caracteres de controle, espaços colapsados, 1–12 caracteres. */
+/** Nome exibível: sem caracteres invisíveis, espaços colapsados, 1–12 caracteres. */
 export function sanitizeName(raw: string): string {
-  // remove caracteres de controle (C0/C1) e espaços invisíveis
-  const cleaned = Array.from(raw.replace(INVISIBLE_CHARS, '').replace(/\s+/g, ' ').trim());
+  const visible = Array.from(raw)
+    .filter((ch) => !isInvisible(ch.codePointAt(0) ?? 0))
+    .join('');
+  const cleaned = Array.from(visible.replace(/\s+/g, ' ').trim());
   const name = cleaned.slice(0, NAME_MAX_LENGTH).join('').trim();
   return name.length > 0 ? name : DEFAULT_NAME;
 }
 
-export function compareEntries(a: HighscoreEntry, b: HighscoreEntry): number {
-  return b.score - a.score || a.date - b.date || a.name.localeCompare(b.name);
+export function ticksToMs(ticks: number, tickHz: number): number {
+  return Math.round((ticks * 1000) / tickHz);
 }
 
-/** A pontuação entraria na tabela? (empate com o último não entra: o mais antigo fica.) */
-export function qualifies(list: readonly HighscoreEntry[], score: number, max = MAX_HIGHSCORES): boolean {
-  if (score <= 0) return false;
+export function compareEntries(a: HighscoreEntry, b: HighscoreEntry): number {
+  return a.timeMs - b.timeMs || a.date - b.date || a.name.localeCompare(b.name);
+}
+
+/** O tempo entraria na tabela? (empate com o 10º não entra: o mais antigo fica.) */
+export function qualifies(list: readonly HighscoreEntry[], timeMs: number, max = MAX_HIGHSCORES): boolean {
+  if (!(timeMs > 0)) return false;
   if (list.length < max) return true;
   const sorted = [...list].sort(compareEntries);
-  return score > sorted[max - 1].score;
+  return timeMs < sorted[max - 1].timeMs;
 }
 
 /** Insere e devolve a tabela ordenada e cortada, com a posição (1-based) ou null se ficou de fora. */
@@ -67,17 +78,14 @@ export function insertEntry(
   return { list: sorted, position: index >= 0 ? index + 1 : null };
 }
 
-/** Atualiza o melhor resultado do nível: cada campo só melhora. */
-export function updateBestByLevel(best: BestByLevel, result: LevelResult): BestByLevel {
+/** Atualiza o melhor resultado do nível: menor tempo e mais estrelas. */
+export function updateBestByLevel(best: BestByLevel, result: LevelResult, tickHz: number): BestByLevel {
   const key = String(result.levelIndex);
+  const timeMs = ticksToMs(result.timeTicks, tickHz);
   const prev = best[key];
   const next: LevelBest = prev
-    ? {
-        score: Math.max(prev.score, result.score),
-        stars: Math.max(prev.stars, result.stars) as LevelBest['stars'],
-        bestTimeTicks: prev.bestTimeTicks === null ? result.timeTicks : Math.min(prev.bestTimeTicks, result.timeTicks),
-      }
-    : { score: result.score, stars: result.stars, bestTimeTicks: result.timeTicks };
+    ? { bestTimeMs: Math.min(prev.bestTimeMs, timeMs), stars: Math.max(prev.stars, result.stars) as LevelBest['stars'] }
+    : { bestTimeMs: timeMs, stars: result.stars };
   return { ...best, [key]: next };
 }
 

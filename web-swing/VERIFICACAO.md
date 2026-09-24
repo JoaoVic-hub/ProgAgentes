@@ -90,42 +90,58 @@ Roteiro para conferir cada etapa no navegador.
 
 ---
 
-## Etapa 2A — Pontuação e HUD
+## Etapa 2 — Contra o relógio, impulso e mísseis
+
+> A primeira versão da Etapa 2 (anéis, combo de pontos, vidas) ficou no checkpoint `web-swing-v0.2.0-aneis` e não vale mais. Este é o roteiro do redesenho.
+
+### 2A — Relógio, impulso e HUD
 
 | # | Faça | Deve acontecer |
 |---|---|---|
-| 2A.1 | Jogue o L1 com `?debug=1` | HUD: nome do nível e vidas (♥♥♥) no alto à esquerda; pontos, multiplicador (×1,0) e a barra de progresso no alto à direita. |
-| 2A.2 | Passe por dentro de um anel (ciano) | "+100 Anel" (ou mais, com velocidade) e o anel "estoura" e some. O contador vai para 1 / 14. |
-| 2A.3 | Passe por um anel acima de ~26 m/s | O popup diz "(velocidade)" e vale 150 (ou 200 acima de ~34 m/s). |
-| 2A.4 | Encadeie swings e flips sem tocar a rua | Popups "+10 Swing", "+100 Flip!"… A barra enche e o multiplicador sobe ×0,5 a cada 4 manobras. |
-| 2A.5 | Pouse na rua e fique parado | "Combo perdido — tocou a rua" e o multiplicador volta a ×1,0. Um raspão rápido (< 0,15 s) não quebra. |
-| 2A.6 | Fique 3 s sem nenhuma manobra | "Combo perdido — sem manobras". |
-| 2A.7 | F1 | Círculos em volta dos anéis (o alcance real da coleta) e as linhas verdes dos checkpoints. O painel mostra os últimos eventos, que batem com os popups. |
+| 2A.1 | Clique para jogar | "Nível 1 — Avenida Aurora", a contagem 3-2-1 e, embaixo, as metas: "★★★ 0:25.00 · ★★ 0:32.00" (e o recorde, se houver). Durante a contagem dá para olhar em volta, mas não para andar, e o cronômetro fica em 0:00.00. |
+| 2A.2 | Depois do "Já!" | O cronômetro corre (alto à esquerda) e embaixo dele aparece "★★★ até 0:25.00". Passado o ouro, vira "★★ até 0:32.00"; passada a prata, só "★". |
+| 2A.3 | Faça um swing e solte subindo (~35°) | Popup "Swing" (ou "Soltura perfeita!" em dourado). O 1º segmento do medidor de **Impulso** (alto à direita) enche até a metade (ou inteiro na perfeita). |
+| 2A.4 | Solte e aperte Espaço logo em seguida (flip) | "Flip!" e mais meio segmento. Ao completar um segmento: "… Impulso ×N!". |
+| 2A.5 | Encadeie 6–8 swings com flips sem tocar a rua | O impulso chega a ×3–×5, o medidor muda de cor (verde → amarelo → laranja) e a velocidade (m/s) dos arcos sobe perceptivelmente (≥ 40 m/s). "combo N" conta os acertos. |
+| 2A.6 | Clique no céu (✕) | "Teia no vazio" e meio segmento a menos. |
+| 2A.7 | Pouse na rua e fique parado | "Tocou a rua — impulso pela metade". Um raspão rápido (< 0,15 s) não perde nada. |
+| 2A.8 | Com impulso, fique 3 s sem manobras (ou parado num telhado) | O impulso escorre aos poucos ("Impulso esfriando" a cada nível perdido). |
+| 2A.9 | Solte a teia e, depois que a janela do flip passou, aperte Espaço no ar | "Flip atrasado" e um quarto de segmento a menos. |
 
-## Etapa 2B — Conclusão de níveis e progressão
-
-| # | Faça | Deve acontecer |
-|---|---|---|
-| 2B.1 | Clique para jogar | Aparecem "Nível 1 — Avenida Aurora" e a contagem 3-2-1, depois "Já!". Durante a contagem dá para olhar em volta, mas não para andar. |
-| 2B.2 | Cruze o arco de chegada | Resumo: estrelas, anéis, estilo, bônus (+1000 todos os anéis / +500 sem tocar a rua), total do nível e da campanha, tempo. `Enter` leva ao nível 2. |
-| 2B.3 | No L2, cruze a chegada com poucos anéis (menos que a cota do HUD) | "Faltaram anéis… −1 vida". `Enter` reinicia o L2 com os pontos do nível zerados. |
-| 2B.4 | `?level=3` e caia no vão (sem chão, água lá embaixo) | "Caiu!", −1 vida, e em ~1 s reaparece no último checkpoint (faixa verde na rua), parado. Os anéis já pegos continuam pegos. |
-| 2B.5 | Nos vãos, use as gruas (torres amarelas) | A teia prende nas gruas e dá para atravessar sem cair. |
-| 2B.6 | Perca as 3 vidas | "Fim de jogo": o mouse é liberado e aparece o placar. |
-| 2B.7 | `?level=5&god=1` e aperte **N** | Resumo do L5 → `Enter` → **Vitória!** (run não ranqueado). |
-| 2B.8 | Compare o L1 com o L4 | O L4 é perceptivelmente mais difícil: mais largo, alturas irregulares, vidro, 2 vãos, anéis menores e cota de 50%. |
-| 2B.9 | Atalhos `?debug=1`: **K** e **R** | K: perde uma vida como numa queda. R: volta ao checkpoint sem perder vida. O painel passa a dizer "NÃO ranqueado". |
-
-## Etapa 2C — Recordes
+### 2B — Mísseis
 
 | # | Faça | Deve acontecer |
 |---|---|---|
-| 2C.1 | Jogue **sem flags** até o fim de jogo com alguma pontuação | "Novo recorde! Seu nome:" → digite e salve → o nome aparece destacado na tabela. |
-| 2C.2 | Aperte F5 e termine outra partida | A tabela anterior continua lá (persistiu no navegador). |
-| 2C.3 | DevTools → Application → Local Storage → mude `web-swing:v1:save` para `{lixo` e recarregue | O jogo abre normalmente, com a tabela vazia, e o valor ruim fica guardado em `web-swing:v1:save.bak`. |
-| 2C.4 | Abra numa aba anônima | Sem erros. Se o navegador bloquear o storage, o placar avisa que os recordes valem só nesta aba. |
-| 2C.5 | Termine uma partida com qualquer flag de jogo (`?level=2`, `?god=1`…) | O placar diz "Run de teste… não entra nos recordes" e não pede nome. |
-| 2C.6 | `?resetScores=1` | Os recordes somem. |
+| 2B.1 | No L1, balance até ~70 m da largada | Num telhado à frente, um **lançador** vira para você: laser vermelho até o seu peito e uma lâmpada piscando cada vez mais rápido. Uma seta **âmbar** aparece em volta do retículo apontando para ele. |
+| 2B.2 | Espere o aviso terminar | Sai um míssil (brilho laranja + rastro de fumaça) que sobe e depois vem atrás de você. A seta **vermelha** acompanha o míssil, mesmo quando ele está atrás (embaixo do retículo). |
+| 2B.3 | Deixe o míssil chegar e, a ~10 m, corte para o lado | Ele passa reto e faz a curva tarde. Se chegar muito perto, o anel em volta do retículo pulsa em vermelho. |
+| 2B.4 | Deixe um míssil acertar | Explosão, flash vermelho nas bordas da tela, "Atingido!", a teia solta, o herói é empurrado e fica atordoado ~0,6 s (medidor tremendo). O impulso cai para 1/4. Por 1,5 s outro míssil não acerta. |
+| 2B.5 | Passe por trás de um prédio com um míssil atrás de você | O míssil bate na fachada e explode (a cidade serve de cobertura). Um lançador sem linha de visada não dispara (o laser some). |
+| 2B.6 | Compare `?level=1` com `?level=4` e `?level=5` (use **J** com `?debug=1` para avançar) | L4/L5: mais lançadores, salvas de 2–3 mísseis, mísseis mais rápidos que fazem curvas mais fechadas e preveem o seu movimento, e fogo cruzado dos dois lados. Desviar exige reverter a direção no tempo certo e manter velocidade alta. |
+| 2B.7 | `?god=1` | Mísseis passam por você sem acertar (run não ranqueado). |
+
+### 2C — Campanha, vãos e estrelas
+
+| # | Faça | Deve acontecer |
+|---|---|---|
+| 2C.1 | Cruze o arco de chegada | Resumo: "Nível concluído!" (ou "Novo recorde!"), o tempo, as estrelas, a diferença para o recorde (verde se melhorou), quanto faltou para a próxima estrela, impulso máximo, perfeitas/flips, mísseis levados/quedas e o tempo da campanha. `Enter` leva ao nível 2. |
+| 2C.2 | Passe por um checkpoint (faixa verde na rua) | Popup "Checkpoint N · m:ss.cc" com o tempo parcial. |
+| 2C.3 | `?level=3` e caia no vão (sem chão, água lá embaixo) | "Caiu! Voltando ao checkpoint — o relógio continua correndo…", e em ~1,2 s reaparece parado no último checkpoint, com o impulso zerado. O cronômetro não para. Os mísseis em voo somem. |
+| 2C.4 | Nos vãos, use as gruas (torres amarelas) | A teia prende nas gruas e dá para atravessar sem cair. Sobre os vãos pode haver lançador no topo de uma grua. |
+| 2C.5 | `?level=5&god=1` e aperte **N** | Resumo do L5 → `Enter` → **Campanha completa!** com o tempo total e as estrelas (run não ranqueado). |
+| 2C.6 | Atalhos `?debug=1`: **J**, **K** e **R** | J avança 60 m (no ar). K simula um acerto de míssil. R volta ao checkpoint. O painel passa a dizer "NÃO ranqueado". |
+
+### 2D — Recordes
+
+| # | Faça | Deve acontecer |
+|---|---|---|
+| 2D.1 | Jogue **sem flags** do L1 ao L5 | "Campanha completa!" → "Novo recorde! Seu nome:" → digite e salve → o nome aparece destacado na tabela de **tempos** (menor primeiro). |
+| 2D.2 | Aperte F5 e jogue de novo o L1 | O HUD e a contagem mostram "recorde m:ss.cc" do L1. Ao terminar, o resumo mostra a diferença. |
+| 2D.3 | DevTools → Application → Local Storage → mude `web-swing:v1:save` para `{lixo` e recarregue | O jogo abre normalmente, com a tabela vazia, e o valor ruim fica guardado em `web-swing:v1:save.bak`. |
+| 2D.4 | Com um save da versão por anéis (v1) no storage, recarregue | A tabela recomeça (pontos não são tempos), o melhor tempo por nível é aproveitado e o save antigo vai para o `.bak`. |
+| 2D.5 | Abra numa aba anônima | Sem erros. Se o navegador bloquear o storage, o placar avisa que os recordes valem só nesta aba. |
+| 2D.6 | Termine com uma flag de jogo (`?god=1`…) ou começando fora do L1 (`?level=2`) | O placar avisa que o run não entra na tabela geral e não pede nome. |
+| 2D.7 | `?resetScores=1` | Os recordes somem. |
 
 ## Verificação automatizada feita no desenvolvimento
 
@@ -138,6 +154,9 @@ Roteiro para conferir cada etapa no navegador.
 | 2026-09-24 | Etapa 2: `npm run verify` | 172 testes (pontuação, progressão, alcançabilidade, recordes, save, replay dourado) + build 158,6 kB gzip | ✅ |
 | 2026-09-24 | Etapa 2: Chrome headless | Countdown com nome do nível → HUD somando (330 pts, ×1,5) → N → resumo com estrelas → Enter → L2 → 3×K → fim de jogo com o mouse liberado e placar (recorde persistido visível, aviso de run de teste) → save corrompido sem erro e com backup → formulário de nome recebe foco e envia. Console sem erros. | ✅ |
 | 2026-09-24 | Etapa 2: `npm run feel` (god mode) | L1–L5 concluídos; 2 quedas nos vãos do L5. | ✅ |
+| 2026-09-24 | Etapa 2 (redesenho): `npm run verify` | 196 testes (impulso, mísseis e desviabilidade por fase, progressão contra o relógio, radar, recordes por tempo, migração v1 → v2, replay dourado com mísseis) + build 165 kB gzip | ✅ |
+| 2026-09-24 | Etapa 2 (redesenho): Chrome headless | Save v1 migrado com backup → contagem com metas e recorde migrado (0:30.00) → HUD com cronômetro, "★★★ até", velocidade e impulso (×1, combo 2 após swings e flips) → J: lançador mirando (laser + lâmpada visíveis, seta âmbar), míssil com rastro, seta vermelha → N → resumo com tempo, ★★★, "vs. recorde −17.51" → Enter → L2 → `?level=5&god=1` + N + Enter → "Campanha completa!" com o mouse liberado → save corrompido sem erro e com backup → formulário de nome recebe foco e envia. Console sem erros. | ✅ |
+| 2026-09-24 | Etapa 2 (redesenho): `npm run feel` | L1–L5 concluídos nos 3 modos (sem flip/god, flip/god, flip levando mísseis); mísseis por nível 3/5/14/12/30, acertos 0/1/2/3/6 (o piloto não desvia). | ✅ |
 
 ## Registro da verificação manual
 
@@ -146,6 +165,6 @@ Roteiro para conferir cada etapa no navegador.
 | | Chrome | 0–1D | | |
 | | Firefox | 0–1D | | |
 | | Edge | 0–1D | | |
-| | Chrome | 2A–2C | | |
-| | Firefox | 2A–2C | | |
-| | Edge | 2A–2C | | |
+| | Chrome | 2A–2D (redesenho) | | |
+| | Firefox | 2A–2D (redesenho) | | |
+| | Edge | 2A–2D (redesenho) | | |

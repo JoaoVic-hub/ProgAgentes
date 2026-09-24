@@ -29,7 +29,8 @@ describe('Gravação e replay (Princípio III)', () => {
     const replay = replayRecording(JSON.parse(JSON.stringify(rec)) as InputRecording, DEFAULT_GAME_CONFIG);
     expect(replay.configMatches).toBe(true);
     expect(replay.hash).toBe(hashState(live));
-    expect(replay.state.levelScore).toBe(live.levelScore);
+    expect(replay.state.progress).toEqual(live.progress);
+    expect(replay.state.momentum).toEqual(live.momentum);
   });
 
   it('a compressão RLE dos inputs é sem perdas e junta frames repetidos', () => {

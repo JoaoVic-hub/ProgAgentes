@@ -18,11 +18,14 @@
 14. [ADR-014: Ferramentas de dev só em desenvolvimento](#adr-014-ferramentas-de-dev-só-em-desenvolvimento)
 15. [ADR-015: Anti-spam de teia (swing mínimo)](#adr-015-anti-spam-de-teia-swing-mínimo)
 16. [ADR-016: Tuning de feel medido (histórico)](#adr-016-tuning-de-feel-medido-histórico)
-17. [ADR-017: Pontuação — limiares de velocidade adaptados](#adr-017-pontuação--limiares-de-velocidade-adaptados)
+17. [ADR-017: Pontuação — limiares de velocidade adaptados](#adr-017-pontuação--limiares-de-velocidade-adaptados) *(substituído pelo ADR-022)*
 18. [ADR-018: Máquina de fases da campanha](#adr-018-máquina-de-fases-da-campanha)
 19. [ADR-019: Vãos, gruas e alcançabilidade garantida](#adr-019-vãos-gruas-e-alcançabilidade-garantida)
 20. [ADR-020: Recordes — parse robusto, versão e backup](#adr-020-recordes--parse-robusto-versão-e-backup)
 21. [ADR-021: Replay dourado com configHash](#adr-021-replay-dourado-com-confighash)
+22. [ADR-022: Impulso (momentum) no lugar de pontos](#adr-022-impulso-momentum-no-lugar-de-pontos)
+23. [ADR-023: Mísseis quase teleguiados de lançadores nos telhados](#adr-023-mísseis-quase-teleguiados-de-lançadores-nos-telhados)
+24. [ADR-024: Contra o relógio — sem vidas, estrelas e recordes por tempo](#adr-024-contra-o-relógio--sem-vidas-estrelas-e-recordes-por-tempo)
 
 ---
 
@@ -362,7 +365,7 @@ Variantes descartadas na rodada 4, com números medidos:
 
 ## ADR-017: Pontuação — limiares de velocidade adaptados
 
-**Status:** Aceito
+**Status:** Substituído pelo ADR-022 (a pontuação por anéis saiu no redesenho; o código está no checkpoint `web-swing-v0.2.0-aneis`)
 **Data:** 2026-09-24
 
 ### Contexto
@@ -385,14 +388,14 @@ O plano (§2) dava +50% no anel a partir de 28 m/s e +100% a partir de 40 m/s, e
 **Data:** 2026-09-24
 
 ### Decisão
-- `GamePhase`: countdown → playing ⇄ respawning; playing → level_complete | level_failed | game_over; e victory. Fonte da verdade única, como no ADR-007 do snake-duel.
-- `engine.step` só despacha pela fase. `logic/progression.ts` faz o resto: countdown, queda, anéis, combo, checkpoints e chegada.
-- As fases **terminais não avançam em `step()`**. Só a cola sai delas: Enter → `advanceAfterLevel` / `restartLevel`; fim de run → placar → `createRun`.
+- `GamePhase`: countdown → playing ⇄ respawning; playing → level_complete; e victory. Fonte da verdade única, como no ADR-007 do snake-duel. (Até o checkpoint `web-swing-v0.2.0-aneis` havia também level_failed e game_over; saíram com as vidas, ADR-024.)
+- `engine.step` só despacha pela fase. `logic/progression.ts` faz o resto. Na fase playing, o tick é: impulso → config efetiva → física do jogador → queda no vão → mísseis (acerto → empurrão + atordoamento) → impulso → checkpoints → chegada.
+- As fases **terminais não avançam em `step()`**. Só a cola sai delas: Enter → `advanceAfterLevel`; vitória → placar → `createRun`. `restartLevel` fica pronto para o menu de pausa da Etapa 3.
 - `logic/player/simulate.ts` é o tick físico da Etapa 1, sem mudança de comportamento: os 119 testes anteriores passaram sem alteração, exceto 1 (as gruas ancoram).
-- Atalhos de debug (N/K/R) e `?god=1` são funções puras e marcam o run como não ranqueado.
+- Atalhos de debug são funções puras e marcam o run como não ranqueado: N (chegada), J (avança 60 m, para testar trechos com lançadores e vãos), K (acerto de míssil simulado), R (checkpoint). `?god=1` = mísseis não acertam.
 
 ### Consequências
-- ✅ Toda a campanha é testável em Node (13 testes de progressão) e reproduzível (replay dourado).
+- ✅ Toda a campanha é testável em Node (14 testes de progressão) e reproduzível (replay dourado).
 - ⚠️ A UI de transição da Etapa 2 é mínima (faixa central + Enter). As telas completas vêm na Etapa 3.
 
 ---
@@ -410,12 +413,12 @@ O plano pede vãos sem chão a partir do L3, com gruas ancoráveis, e um teste d
 - **Gruas:** torres de 3 × 3 m logo fora do corredor da avenida (o corredor continua livre), alternando os lados, com no máximo ~28 m entre elas.
 - **Vidro frente a frente proibido:** o teste de alcançabilidade achou **60 m sem nenhuma âncora no L4**, com vidro dos dois lados. A regra "nunca dois vidros seguidos" só valia no mesmo lado. Agora um prédio não pode ser de vidro se o prédio em frente também for.
 - **Checkpoints:** igualmente espaçados; se um cai num vão, vai para 15 m antes dele.
-- **Anéis:** rota suave (senoides de fase sorteada) com folga ≥ raio + 1,5 m das fachadas e ≥ raio + 1 m da rua.
+- **Lançadores** (ADR-023) são posicionados sem consumir o PRNG: a cidade não muda por causa deles.
 - A ordem de consumo do PRNG mantém a cidade do L1 idêntica à da Etapa 1. O L2 mudou onde a regra do vidro se aplicou.
 
 ### Consequências
 - ✅ Os 5 níveis passam no teste de alcançabilidade, inclusive sobre os vãos.
-- ⚠️ **O par (3ª estrela) é provisório.** O piloto automático não mira anéis, então não serve para calibrá-lo. As rotas passam a 3–10 m dos centros e na faixa de altura das trajetórias, portanto são pegáveis com mira. Calibrar com partidas reais.
+- ⚠️ Os tempos de ouro/prata são provisórios (ADR-024).
 
 ---
 
@@ -426,14 +429,14 @@ O plano pede vãos sem chão a partir do L3, com gruas ancoráveis, e um teste d
 
 ### Decisão
 - `logic/highscores.ts` (puro):
-  - top 10;
+  - top 10 por **menor tempo** (ADR-024);
   - empate → data mais antiga;
-  - nome saneado (1–12 caracteres, sem controle);
-  - melhor por nível que só melhora.
+  - nome saneado (1–12 caracteres, sem controle nem caracteres invisíveis);
+  - melhor por nível que só melhora (menor tempo, mais estrelas).
 - `logic/save-data.ts`:
   - `parseSaveData` **nunca lança**; JSON corrompido ou versão futura → padrão, com o status;
-  - migração do formato legado (v0);
-  - números não finitos descartados.
+  - versão 2 (tempos). Migração do v0 (legado) e do v1 (anéis): pontos não são tempos, então a tabela recomeça; do v1 aproveita-se o melhor tempo por nível (sem as estrelas, que eram de anéis). O original migrado também vai para o backup;
+  - números não finitos, negativos ou absurdos (> 10 h) descartados.
 - `storage/store.ts`:
   - localStorage com queda para memória (aba anônima, storage bloqueado);
   - só strings, sem regras.
@@ -456,15 +459,128 @@ O plano pede vãos sem chão a partir do L3, com gruas ancoráveis, e um teste d
 
 ### Decisão
 - `tools/golden.gen.ts` (`npm run golden`): o piloto automático joga o L1 desde o countdown até concluir. A gravação vai para `src/logic/__fixtures__/replay-l1.json` com:
-  - os inputs comprimidos em RLE (2.076 ticks → 32 trechos, 3,9 kB);
+  - os inputs comprimidos em RLE (1.893 ticks → 302 trechos, 33 kB; o piloto agora só clica com alvo válido e faz flips, o que picota mais o input);
   - o `configHash`;
-  - o resultado esperado (pontos, anéis, estrelas, hash do estado).
+  - o resultado esperado (tempo do nível e da campanha, estrelas, acertos de míssil, flips, impulso máximo, hash do estado). O replay roda **sem** god mode: cobre também os mísseis do L1.
 - `src/logic/golden.test.ts` reproduz e exige o mesmo estado final. Se a config mudou, falha com a mensagem para rodar `npm run golden`.
 - As gravações do jogo (`?record=1` + F9) usam o mesmo formato (v2) e são reproduzíveis por `window.__webSwing.loadReplay`. Os atalhos N/K/R e o tuning pelo F2 marcam a gravação como `reproducible: false`.
 
 ### Consequências
-- ✅ Qualquer mudança acidental de física, pontuação, progressão ou determinismo quebra o teste. Verificado: mudar `pump` em 0,5% já quebra.
+- ✅ Qualquer mudança acidental de física, impulso, mísseis, progressão ou determinismo quebra o teste. Verificado: mudar `pump` em 0,5% já quebra — e mudar a posição dos lançadores (que não está na config) também quebrou, pelo estado final.
 - ⚠️ Toda mudança intencional de tuning exige regravar (é o objetivo).
+
+---
+
+## ADR-022: Impulso (momentum) no lugar de pontos
+
+**Status:** Aceito
+**Data:** 2026-09-24
+
+### Contexto
+O dono do projeto pediu para tirar a pontuação por anéis. O objetivo passa a ser terminar cada nível no menor tempo, e jogar bem precisa **deixar o herói mais rápido**: acertar sequências de swings e manobras aumenta a velocidade aos poucos; errar reduz ou tira parte dela.
+
+### Decisão
+- `logic/momentum.ts` (puro): um valor contínuo de 0 a 5 (o "nível" é a parte inteira), um combo (acertos seguidos) e contadores de rua, telhado e ociosidade.
+  - **Ganhos** (ligados aos eventos da física, sem regras novas de detecção): swing com qualidade ≥ 0,4 → +0,5; soltura perfeita → +1,0; flip → +0,5.
+  - **Perdas fixas:** clique sem alvo −0,5; soltura com q < 0,15 −0,5; flip atrasado −0,25. O flip atrasado é o Espaço no ar depois de a janela fechar, até 1 s após soltar, com o flip ainda disponível. Espaço extra depois de um flip válido não pune.
+  - **Perdas parciais** (mantém uma fração): rua > 150 ms → 50% (uma vez por pouso; raspão não conta); bonk → 40%; míssil → 25%. Queda no vão zera.
+  - **Escoamento:** sem ganho por 3 s, ou > 1,2 s parado num telhado, perde 0,5/s. Só emite evento quando cai um nível inteiro, para não inundar o HUD.
+  - Toque curto na teia (< 0,35 s, ADR-015) não ganha nem perde.
+- **Impulso → velocidade:** `applyMomentum(config, v)` devolve a config efetiva do tick. A física não muda de código; muda de parâmetros:
+  - `swingMaxSpeed` +4 m/s por nível;
+  - boost da soltura ×(1 + 0,2 por nível);
+  - `swingAssist` +2 e `pump` +0,8 por nível;
+  - arrasto quadrático −12% por nível.
+- **Medição:** o mesmo balanço vai de 32,5 m/s (impulso 0) a 44,9 m/s (impulso 5), +38%. Variantes mais fracas (só teto e boost) davam +14%, imperceptível.
+
+### Consequências
+- ✅ O ciclo "jogar bem → mais rápido → mais difícil de controlar" sai da própria física: mais velocidade = arcos maiores, menos tempo para mirar, bonks mais fáceis.
+- ✅ Tudo testado em Node (12 testes de impulso), e o estado entra no `hashState`.
+- ⚠️ O impulso é por tick (config efetiva). Mudar o tuning base muda também o efeito de cada nível.
+
+---
+
+## ADR-023: Mísseis quase teleguiados de lançadores nos telhados
+
+**Status:** Aceito
+**Data:** 2026-09-24
+
+### Contexto
+O dono do projeto pediu obstáculos com mísseis que perseguem o jogador, tentando acompanhar ou prever a trajetória, **sem ser impossíveis de desviar**, e cada vez mais difíceis: mais rápidos, em maior número, com perseguição mais eficiente e combinações que exijam mudar de direção.
+
+### Decisão
+- **Lançadores** (`LevelSpec.threats.launchers`): igualmente espaçados entre z = 70 e a chegada − 40, alternando os lados, no telhado mais próximo (ou no topo de uma grua, sobre os vãos). Com fogo cruzado (L4+), vêm em pares, um de cada lado.
+  - A cabeça fica 0,5 m para dentro da quina e 2 m acima do telhado. Com 1 m / 1,5 m, a própria laje tapava a vista: só ~50% das posições no alcance eram visíveis (medido; o smoke test no navegador não via míssil nenhum). Agora são ~97%, com um ponto cego logo abaixo, colado à fachada.
+- **Máquina de estados** (`logic/threats.ts`, puro):
+  - idle → aiming quando o jogador está a ≤ 75 m, no máximo 20 m depois do lançador, e à vista;
+  - aiming dura 0,9 s (**aviso**); perder a linha de visada cancela;
+  - firing: salva a cada 0,18 s (até 24 mísseis vivos);
+  - cooldown: tempo da fase.
+- **Míssil:**
+  - sai para cima e para dentro da avenida, acelerando sem guiagem por 0,35 s;
+  - depois voa a velocidade constante e gira no máximo `turnRate × dt` por tick em direção ao ponto previsto;
+  - `aimPoint` = peito + velocidade do jogador × `lead` × min(tempo até o alvo, 1,5 s);
+  - explode ao bater num sólido (cobertura), some após 7 s ou abaixo de `killY`.
+- **Acerto:** distância mínima **contínua** no tick (movimento relativo, ≤ 1,1 m), então não "atravessa" a 57 m/s. Efeito: solta a teia, atordoa por 0,6 s, empurra 14 m/s na direção do míssil + 6 m/s para cima e deixa 25% do impulso. Depois, 1,5 s de invulnerabilidade. `?god=1` desliga os acertos.
+- **Progressão:**
+
+  | | L1 | L2 | L3 | L4 | L5 |
+  |---|---|---|---|---|---|
+  | Lançadores | 3 | 5 | 7 | 10 | 14 |
+  | Salva | 1 | 1 | 2 | 2 | 3 |
+  | Velocidade (m/s) | 38 | 42 | 47 | 52 | 57 |
+  | Curva (rad/s) | 1,0 | 1,3 | 1,6 | 1,9 | 2,2 |
+  | Previsão | 0 | 0,3 | 0,5 | 0,75 | 1,0 |
+  | Recarga (s) | 3,5 | 3,0 | 2,6 | 2,2 | 1,8 |
+  | Fogo cruzado | — | — | — | ✓ | ✓ |
+
+- **Desviável, e cada vez menos:** um teste simula o "toureiro" repetido (segue em frente e corta para o lado, alternando, quando o míssil chega a menos de *d* metros). São 36 combinações: 3 velocidades × 6 distâncias × vindo de trás ou de frente. Escapam 34 no L1, 34 no L2, 29 no L3, 21 no L4 e 15 no L5. O teste exige:
+  - que um corte bem cronometrado a 32 m/s escape de trás e de frente em **todas** as fases;
+  - que a janela nunca cresça de uma fase para a seguinte;
+  - que o L5 escape em menos da metade das combinações do L1;
+  - que, no L5, de frente e a 25 m/s, **nada** escape: é preciso velocidade (impulso) para desviar.
+- **Visual** (`render/threats.ts`): tudo instanciado, 8 draw calls:
+  - base e cabeça que segue o jogador;
+  - laser aditivo mais grosso de longe e lâmpada piscando cada vez mais rápido;
+  - míssil com brilho do motor e rastro de fumaça em pool;
+  - explosões aditivas.
+- **Radar** (`app/threat-radar.ts` puro + `ui/threat-indicator.ts`): setas em volta do retículo para mísseis e lançadores mirando, com urgência por distância e aproximação.
+
+### Consequências
+- ✅ A previsão cria o ciclo de habilidade: mísseis que preveem são enganados por uma reversão bem cronometrada (o L5 escapa em 8–12 m de reação a 32 m/s). Mísseis sem previsão (L1) são lentos demais para acompanhar um corte.
+- ✅ Mísseis por nível com o piloto (que não desvia): 3, 5, 14, 12–18 e 24–39; acertos: 0, 1, 2, 3 e 5–6.
+- ⚠️ O piloto não desvia, então a dificuldade real das fases finais precisa ser validada com jogadores. Os botões de ajuste são a tabela acima e `missiles` em `logic/config.ts`.
+
+---
+
+## ADR-024: Contra o relógio — sem vidas, estrelas e recordes por tempo
+
+**Status:** Aceito
+**Data:** 2026-09-24
+
+### Contexto
+Com o objetivo de "terminar no menor tempo", vidas e fim de jogo competiriam com o relógio como castigo. Decisão do dono do projeto: **só tempo, sem vidas**.
+
+### Decisão
+- Sem vidas, sem cota e sem game over. O castigo de todo erro é **tempo**:
+  - impulso perdido = mais lento;
+  - acerto de míssil = atordoamento + empurrão;
+  - queda no vão = volta ao último checkpoint, parado, com o relógio correndo (1,2 s de respawn + a distância perdida).
+- O relógio do nível (`progress.ticks`) só corre em playing/respawning; o countdown não conta. O tempo da campanha (`runTicks`) soma os níveis.
+- **Estrelas:** ★ concluiu; ★★ até `silverTime`; ★★★ até `goldTime` (`LevelSpec`):
+
+  | | L1 | L2 | L3 | L4 | L5 |
+  |---|---|---|---|---|---|
+  | Ouro (s) | 25 | 31 | 38 | 46 | 54 |
+  | Prata (s) | 32 | 40 | 49 | 59 | 70 |
+
+  O ouro pede média de ~30–32 m/s (impulso alto, poucos erros) e a prata ~23–25 m/s. O piloto automático, que joga mal, fica entre ★ e ★★.
+- **Recordes:** tabela geral com os 10 menores tempos de **campanha completa desde o L1** (vitória, run ranqueado); melhor por nível com o menor tempo e o máximo de estrelas. Dados v2 (ADR-020). Tempos na UI truncados em centésimos (nunca aparecem melhores do que são).
+
+### Consequências
+- ✅ Uma única moeda (tempo): qualquer decisão do jogador se resume a "isso me deixa mais rápido?".
+- ✅ Correr riscos (voar baixo, cortar perto de mísseis, soltar no limite) compensa: é mais impulso e menos tempo.
+- ⚠️ Tempos de ouro e prata provisórios: calibrar com partidas reais (o piloto não serve de referência de habilidade).
 
 ---
 

@@ -116,22 +116,6 @@ export function closestPointOnSegmentToRay(a: Vec3, b: Vec3, origin: Vec3, dir: 
   return p;
 }
 
-/**
- * O segmento [a, b] atravessa o disco (centro, normal unitária, raio)?
- * Usado na coleta de anéis: o corpo do jogador vai de a (tick anterior) a b
- * (tick atual), então nenhum anel é "pulado" mesmo a 60 m/s.
- */
-export function segmentCrossesDisc(a: Vec3, b: Vec3, center: Vec3, normal: Vec3, radius: number): boolean {
-  const da = dot(sub(a, center), normal);
-  const db = dot(sub(b, center), normal);
-  if (da === db) return false; // paralelo ao plano (ou parado)
-  if (da * db > 0) return false; // os dois do mesmo lado
-  const t = da / (da - db);
-  const p = add(a, scale(sub(b, a), t));
-  const off = sub(p, center);
-  return dot(off, off) <= radius * radius;
-}
-
 /** Distância de um ponto a uma caixa (0 se estiver dentro). */
 export function pointBoxDistance(p: Vec3, box: Box): number {
   const dx = Math.max(box.min.x - p.x, 0, p.x - box.max.x);

@@ -7,13 +7,15 @@
  *
  * A partir do L3 há vãos sem chão: a rua vira segmentos, nenhum prédio
  * invade o vão e gruas ancoráveis (logo fora do corredor da avenida) servem
- * de apoio para atravessá-lo. Cair no vão (abaixo de killY) custa uma vida.
+ * de apoio para atravessá-lo. Cair no vão (abaixo de killY) leva ao último
+ * checkpoint — com o relógio correndo.
  *
- * Os anéis seguem uma rota suave no meio da avenida; os "de risco" ficam
- * baixos, perto da rua, ou sobre os vãos — os dourados são sempre de risco.
+ * Lançadores de mísseis ficam nos telhados — ou no topo das gruas, quando o
+ * ponto cai sobre um vão (atravessar o vão sob fogo) — espaçados ao longo do
+ * percurso (em pares dos dois lados nas fases com fogo cruzado).
  */
 
-import type { Checkpoint, Level, LevelSpec, Range, Ring, Solid, SolidKind, ZRange } from '../types';
+import type { Checkpoint, Launcher, Level, LevelSpec, Range, Solid, SolidKind, ZRange } from '../types';
 import type { Vec3 } from '../math/vec3';
 import { nextRandom, nextRange } from '../rng';
 import { buildBroadphase } from './broadphase';
@@ -38,9 +40,19 @@ const CRANE_HEIGHT: Range = [60, 80];
 /** Espaçamento alvo entre gruas ao longo do vão. */
 const CRANE_SPACING = 28;
 
-/** Anéis ficam nesta faixa de Z (longe da largada e da chegada). */
-const RING_Z_FROM = 45;
-const RING_Z_BEFORE_FINISH = 25;
+/** Lançadores ficam nesta faixa de Z (longe da largada e da chegada). */
+const LAUNCHER_Z_FROM = 70;
+const LAUNCHER_BEFORE_FINISH = 40;
+/**
+ * A cabeça fica 0,5 m para dentro da quina do telhado e 2 m acima dele. Mais
+ * recuada/baixa, a própria laje tapava a vista de quem passa pela avenida
+ * (com 1 m / 1,5 m só ~50% das posições no alcance eram visíveis; assim ~97%).
+ * Sobra um ponto cego logo abaixo do lançador, colado à fachada.
+ */
+const LAUNCHER_ROOF_INSET = 0.5;
+const LAUNCHER_HEIGHT = 2;
+const LAUNCHER_MIN_ROOF = 15;
+const LAUNCHER_SEARCH = 40;
 
 interface DraftSolid {
   min: Vec3;
@@ -155,10 +167,6 @@ function buildCranes(spec: LevelSpec, voids: readonly ZRange[], rngIn: number): 
   return [rng, out];
 }
 
-function inVoid(z: number, voids: readonly ZRange[], margin = 0): boolean {
-  return voids.some((vd) => z >= vd.start - margin && z <= vd.end + margin);
-}
-
 /** Checkpoints igualmente espaçados; se cair num vão, vai para 15 m antes dele. */
 function placeCheckpoints(spec: LevelSpec, voids: readonly ZRange[]): Checkpoint[] {
   const out: Checkpoint[] = [];
@@ -171,62 +179,47 @@ function placeCheckpoints(spec: LevelSpec, voids: readonly ZRange[]): Checkpoint
   return out;
 }
 
-/**
- * Anéis numa rota suave (senoides com fase sorteada) dentro do corredor da
- * avenida, sempre com folga ≥ raio + 1,5 m das fachadas e ≥ raio + 1 m da
- * rua. Os de risco descem para perto da rua (ou ficam baixos sobre um vão).
- */
-function placeRings(spec: LevelSpec, voids: readonly ZRange[], rngIn: number): [number, Ring[]] {
-  let rng = rngIn;
-  const { count, gold, radius, riskyRatio } = spec.rings;
-  const halfW = spec.avenueWidth / 2;
-  const maxX = halfW - radius - 1.5;
-  const minY = Math.max(3, radius + 1);
-  const zFrom = RING_Z_FROM;
-  const zTo = spec.length - RING_Z_BEFORE_FINISH;
-  let phaseX: number;
-  let phaseY: number;
-  [rng, phaseX] = nextRange(rng, 0, Math.PI * 2);
-  [rng, phaseY] = nextRange(rng, 0, Math.PI * 2);
-
-  // índices de risco espalhados pelo nível; os dourados são um subconjunto deles
-  const riskyCount = Math.min(count, Math.max(gold, Math.round(count * riskyRatio)));
-  const risky = new Set<number>();
-  for (let k = 0; k < riskyCount; k++) risky.add(Math.floor(((k + 0.5) * count) / riskyCount));
-  const riskyList = [...risky].sort((a, b) => a - b);
-  const golden = new Set<number>();
-  for (let k = 0; k < gold && riskyList.length > 0; k++) {
-    golden.add(riskyList[Math.floor(((k + 0.5) * riskyList.length) / gold)]);
-  }
-
-  const out: Ring[] = [];
-  let v: number;
-  for (let i = 0; i < count; i++) {
-    const z = cm(zFrom + ((zTo - zFrom) * (i + 0.5)) / count);
-    const overVoid = inVoid(z, voids, 2);
-    const isRisky = risky.has(i) || overVoid;
-    const routeX = maxX * 0.55 * Math.sin(z / 90 + phaseX);
-    const routeY = 20 + 9 * Math.sin(z / 70 + phaseY);
-    let y: number;
-    if (overVoid) {
-      [rng, v] = nextRange(rng, 4, 10);
-      y = v;
-    } else if (isRisky) {
-      [rng, v] = nextRange(rng, minY, Math.max(minY, 7));
-      y = v;
-    } else {
-      y = routeY;
+/** Prédio comum ou grua do lado `side`, com topo alto o bastante, mais perto de `z`. */
+function pickRoof(solids: readonly Solid[], side: -1 | 1, z: number): Solid | null {
+  let best: Solid | null = null;
+  let bestDist = Infinity;
+  for (const s of solids) {
+    if ((s.kind !== 'building' && s.kind !== 'crane') || s.side !== side || s.box.max.y < LAUNCHER_MIN_ROOF) continue;
+    const zc = Math.min(Math.max(z, s.box.min.z), s.box.max.z);
+    const d = Math.abs(zc - z);
+    if (d <= LAUNCHER_SEARCH && d < bestDist) {
+      best = s;
+      bestDist = d;
     }
-    out.push({
-      id: i,
-      center: { x: cm(Math.max(-maxX, Math.min(maxX, routeX))), y: cm(Math.max(minY, y)), z },
-      normal: { x: 0, y: 0, z: 1 },
-      radius,
-      gold: golden.has(i),
-      risky: isRisky,
-    });
   }
-  return [rng, out];
+  return best;
+}
+
+/**
+ * Lançadores igualmente espaçados entre LAUNCHER_Z_FROM e a chegada, alternando
+ * os lados (ou em pares, com fogo cruzado). Determinístico, sem PRNG.
+ */
+function placeLaunchers(spec: LevelSpec, solids: readonly Solid[]): Launcher[] {
+  const t = spec.threats;
+  if (t.launchers <= 0) return [];
+  const slots = t.crossfire ? Math.ceil(t.launchers / 2) : t.launchers;
+  const zFrom = LAUNCHER_Z_FROM;
+  const zTo = spec.length - LAUNCHER_BEFORE_FINISH;
+  const drafts: Omit<Launcher, 'id'>[] = [];
+  for (let k = 0; k < slots; k++) {
+    const z = zFrom + ((zTo - zFrom) * (k + 0.5)) / slots;
+    const sides: (-1 | 1)[] = t.crossfire ? [-1, 1] : [k % 2 === 0 ? -1 : 1];
+    for (const side of sides) {
+      if (drafts.length >= t.launchers) break;
+      const b = pickRoof(solids, side, z);
+      if (!b) continue;
+      const margin = Math.min(2, (b.box.max.z - b.box.min.z) / 2);
+      const lz = Math.min(Math.max(z, b.box.min.z + margin), b.box.max.z - margin);
+      const x = side < 0 ? b.box.max.x - LAUNCHER_ROOF_INSET : b.box.min.x + LAUNCHER_ROOF_INSET;
+      drafts.push({ pos: { x: cm(x), y: cm(b.box.max.y + LAUNCHER_HEIGHT), z: cm(lz) }, side, solidId: b.id });
+    }
+  }
+  return drafts.sort((a, b) => a.pos.z - b.pos.z || a.pos.x - b.pos.x).map((d, id) => ({ ...d, id }));
 }
 
 export function halfWorldWidth(spec: LevelSpec): number {
@@ -240,13 +233,11 @@ export function generateLevel(spec: LevelSpec, seedOverride: number | null = nul
   let left: DraftSolid[];
   let right: DraftSolid[];
   let cranes: DraftSolid[];
-  let rings: Ring[];
   // ordem fixa de consumo do PRNG (sem vãos, L1/L2 geram a mesma cidade da Etapa 1)
   [rng, voids] = placeVoids(spec, rng);
   [rng, left] = buildSide(spec, -1, voids, [], rng);
   [rng, right] = buildSide(spec, 1, voids, left, rng);
   [rng, cranes] = buildCranes(spec, voids, rng);
-  [rng, rings] = placeRings(spec, voids, rng);
 
   const hw = halfWorldWidth(spec);
   const zLo = -LEVEL_Z_BEFORE_START - 20;
@@ -293,8 +284,7 @@ export function generateLevel(spec: LevelSpec, seedOverride: number | null = nul
     killY: KILL_Y,
     halfWorldWidth: hw,
     voids,
-    rings,
+    launchers: placeLaunchers(spec, solids),
     checkpoints: placeCheckpoints(spec, voids),
-    ringQuota: Math.ceil(spec.minRingRatio * rings.length),
   };
 }

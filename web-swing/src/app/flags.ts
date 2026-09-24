@@ -23,7 +23,7 @@ export interface DebugFlags {
   readonly hz: 60 | 120;
   /** 'pose' = visualizador de poses do boneco em vez do jogo. */
   readonly view: 'game' | 'pose';
-  /** Não perde vidas nem precisa da cota de anéis. */
+  /** Mísseis não acertam (o run sai do ranking). */
   readonly god: boolean;
   /** Apaga os recordes salvos ao abrir. */
   readonly resetScores: boolean;

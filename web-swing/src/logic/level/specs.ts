@@ -1,9 +1,14 @@
 /**
- * Especificações dos 5 níveis (tabela do plano, §3). A dificuldade cresce de
- * forma monotônica: avenida mais longa e mais larga, alturas mais
- * irregulares, becos maiores, mais prédios de vidro (sem ancoragem), vãos
- * sem chão a partir do L3, anéis menores, mais anéis de risco e cota maior.
- * Seeds fixas → recordes comparáveis entre jogadores.
+ * Especificações dos 5 níveis. A dificuldade cresce de forma monotônica:
+ * avenida mais longa e mais larga, alturas mais irregulares, becos maiores,
+ * mais prédios de vidro (sem ancoragem), vãos sem chão a partir do L3 e
+ * ameaças mais duras — mais lançadores, salvas maiores, mísseis mais
+ * rápidos, curvas mais fechadas, mais previsão e fogo cruzado (L4+).
+ * goldTime/silverTime (s) dão as estrelas (ADR-024): o ouro pede média de
+ * ~30–32 m/s (impulso alto e poucos erros), a prata ~23–25 m/s. O piloto
+ * automático (npm run feel), que joga mal de propósito, fica entre ★ e ★★.
+ * Valores provisórios até o teste com jogadores.
+ * Seeds fixas → tempos comparáveis entre jogadores.
  */
 
 import type { LevelSpec } from '../types';
@@ -26,10 +31,10 @@ export const LEVEL_SPECS: readonly LevelSpec[] = [
     spacing: [4, 10],
     glassRatio: 0,
     voids: { count: 0, length: [0, 0] },
-    rings: { count: 14, gold: 1, radius: 3.0, riskyRatio: 0.1 },
-    minRingRatio: 0,
     checkpoints: 2,
-    parScore: 4000,
+    threats: { launchers: 3, salvo: 1, missileSpeed: 38, turnRate: 1.0, lead: 0, cooldown: 3.5, crossfire: false },
+    goldTime: 25,
+    silverTime: 32,
   },
   {
     ...BASE,
@@ -42,10 +47,10 @@ export const LEVEL_SPECS: readonly LevelSpec[] = [
     spacing: [5, 12],
     glassRatio: 0.1,
     voids: { count: 0, length: [0, 0] },
-    rings: { count: 18, gold: 2, radius: 2.8, riskyRatio: 0.15 },
-    minRingRatio: 0.3,
     checkpoints: 2,
-    parScore: 6000,
+    threats: { launchers: 5, salvo: 1, missileSpeed: 42, turnRate: 1.3, lead: 0.3, cooldown: 3.0, crossfire: false },
+    goldTime: 31,
+    silverTime: 40,
   },
   {
     ...BASE,
@@ -58,10 +63,10 @@ export const LEVEL_SPECS: readonly LevelSpec[] = [
     spacing: [6, 14],
     glassRatio: 0.15,
     voids: { count: 1, length: [40, 50] },
-    rings: { count: 22, gold: 2, radius: 2.6, riskyRatio: 0.2 },
-    minRingRatio: 0.4,
     checkpoints: 3,
-    parScore: 8500,
+    threats: { launchers: 7, salvo: 2, missileSpeed: 47, turnRate: 1.6, lead: 0.5, cooldown: 2.6, crossfire: false },
+    goldTime: 38,
+    silverTime: 49,
   },
   {
     ...BASE,
@@ -74,10 +79,10 @@ export const LEVEL_SPECS: readonly LevelSpec[] = [
     spacing: [8, 16],
     glassRatio: 0.2,
     voids: { count: 2, length: [50, 70] },
-    rings: { count: 26, gold: 3, radius: 2.4, riskyRatio: 0.25 },
-    minRingRatio: 0.5,
     checkpoints: 3,
-    parScore: 11000,
+    threats: { launchers: 10, salvo: 2, missileSpeed: 52, turnRate: 1.9, lead: 0.75, cooldown: 2.2, crossfire: true },
+    goldTime: 46,
+    silverTime: 59,
   },
   {
     ...BASE,
@@ -90,10 +95,10 @@ export const LEVEL_SPECS: readonly LevelSpec[] = [
     spacing: [8, 20],
     glassRatio: 0.25,
     voids: { count: 3, length: [60, 80] },
-    rings: { count: 30, gold: 4, radius: 2.2, riskyRatio: 0.3 },
-    minRingRatio: 0.6,
     checkpoints: 4,
-    parScore: 14000,
+    threats: { launchers: 14, salvo: 3, missileSpeed: 57, turnRate: 2.2, lead: 1.0, cooldown: 1.8, crossfire: true },
+    goldTime: 54,
+    silverTime: 70,
   },
 ];
 

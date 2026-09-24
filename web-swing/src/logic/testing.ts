@@ -4,7 +4,7 @@
  * importado por arquivos *.test.ts (fica fora do bundle).
  */
 
-import type { Checkpoint, GameConfig, GameState, InputFrame, Level, Player, Ring, Rope, SolidKind, ZRange } from './types';
+import type { Checkpoint, GameConfig, GameState, InputFrame, Launcher, Level, Player, Rope, SolidKind, ZRange } from './types';
 import type { Vec3 } from './math/vec3';
 import { buildBroadphase } from './level/broadphase';
 import { LEVEL_SPECS } from './level/specs';
@@ -21,9 +21,8 @@ export interface TestBox {
 
 export interface TestLevelOptions {
   readonly start?: Vec3;
-  readonly rings?: readonly Ring[];
+  readonly launchers?: readonly Launcher[];
   readonly checkpoints?: readonly Checkpoint[];
-  readonly ringQuota?: number;
   readonly finishZ?: number;
   /** Trechos de Z sem rua (vãos). */
   readonly voids?: readonly ZRange[];
@@ -55,9 +54,8 @@ export function makeTestLevel(boxes: readonly TestBox[], opts: TestLevelOptions 
     killY: -25,
     halfWorldWidth: 500,
     voids,
-    rings: opts.rings ?? [],
+    launchers: opts.launchers ?? [],
     checkpoints: opts.checkpoints ?? [],
-    ringQuota: opts.ringQuota ?? 0,
   };
 }
 

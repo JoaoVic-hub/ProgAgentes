@@ -1,23 +1,44 @@
 /**
- * Faixa central (Etapa 2B, UI mínima): nome do nível + 3-2-1, aviso de
- * queda, resumo do nível concluído e aviso de nível falhado (Enter para
- * seguir). As telas completas de abertura/game over chegam na Etapa 3.
+ * Faixa central (UI mínima até a Etapa 3): nome do nível + metas de tempo +
+ * 3-2-1, aviso de queda e o resumo do nível concluído (Enter para seguir).
  */
 
 import type { LevelResult } from '../logic/types';
+import { formatDelta, formatTime } from './format';
+
+export interface CountdownInfo {
+  readonly levelLabel: string;
+  readonly value: number;
+  readonly goldMs: number;
+  readonly silverMs: number;
+  readonly bestMs: number | null;
+}
+
+export interface LevelCompleteInfo {
+  readonly result: LevelResult;
+  readonly timeMs: number;
+  /** Recorde do nível ANTES desta tentativa (null = primeira vez). */
+  readonly previousBestMs: number | null;
+  readonly goldMs: number;
+  readonly silverMs: number;
+  /** Tempo acumulado da campanha até aqui. */
+  readonly runTimeMs: number;
+  readonly isLastLevel: boolean;
+  /** false: run de teste (não grava recorde). */
+  readonly ranked: boolean;
+}
 
 export interface Banner {
-  showCountdown(levelLabel: string, value: number): void;
+  showCountdown(info: CountdownInfo): void;
   showGo(): void;
-  showRespawn(livesLeft: number): void;
-  showLevelComplete(result: LevelResult, runScore: number, isLastLevel: boolean, timeSec: number): void;
-  showLevelFailed(rings: number, quota: number, livesLeft: number): void;
+  showRespawn(): void;
+  showLevelComplete(info: LevelCompleteInfo): void;
   hide(): void;
   dispose(): void;
 }
 
-const fmt = (n: number) => n.toLocaleString('pt-BR');
 const stars = (n: number) => '★'.repeat(n) + '☆'.repeat(3 - n);
+const fmtMomentum = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
 
 export function createBanner(root: HTMLElement): Banner {
   const el = document.createElement('div');
@@ -36,43 +57,47 @@ export function createBanner(root: HTMLElement): Banner {
   }
 
   return {
-    showCountdown(levelLabel, value) {
-      show(`cd:${levelLabel}:${value}`, 'countdown', `<div class="banner-sub">${levelLabel}</div><div class="banner-big">${value}</div>`);
+    showCountdown(c) {
+      const goals = `★★★ ${formatTime(c.goldMs)} · ★★ ${formatTime(c.silverMs)}${c.bestMs !== null ? ` · recorde ${formatTime(c.bestMs)}` : ''}`;
+      show(
+        `cd:${c.levelLabel}:${c.value}`,
+        'countdown',
+        `<div class="banner-sub">${c.levelLabel}</div><div class="banner-big">${c.value}</div><div class="banner-goals">${goals}</div>`,
+      );
     },
     showGo() {
       show('go', 'countdown', '<div class="banner-big">Já!</div>');
     },
-    showRespawn(livesLeft) {
-      show(`resp:${livesLeft}`, 'bad', `<div class="banner-title">Caiu!</div><div class="banner-sub">${livesLeft} ${livesLeft === 1 ? 'vida restante' : 'vidas restantes'} — voltando ao checkpoint…</div>`);
+    showRespawn() {
+      show('resp', 'bad', '<div class="banner-title">Caiu!</div><div class="banner-sub">Voltando ao checkpoint — o relógio continua correndo…</div>');
     },
-    showLevelComplete(r, runScore, isLastLevel, timeSec) {
-      const bonus = [
-        r.allRingsBonus > 0 ? `<li>Todos os anéis <b>+${fmt(r.allRingsBonus)}</b></li>` : '',
-        r.noStreetBonus > 0 ? `<li>Sem tocar a rua <b>+${fmt(r.noStreetBonus)}</b></li>` : '',
-      ].join('');
+    showLevelComplete(c) {
+      const r = c.result;
+      const record = c.ranked && (c.previousBestMs === null || c.timeMs < c.previousBestMs);
+      const vsBest =
+        c.previousBestMs === null
+          ? ''
+          : `<li>vs. recorde <b class="${c.timeMs < c.previousBestMs ? 'delta-good' : 'delta-bad'}">${formatDelta(c.timeMs - c.previousBestMs)}</b></li>`;
+      const nextGoal =
+        r.stars === 3
+          ? ''
+          : `<li class="banner-muted">${r.stars === 2 ? '★★★' : '★★'} em ${formatTime(r.stars === 2 ? c.goldMs : c.silverMs)} <b>faltou ${formatDelta(c.timeMs - (r.stars === 2 ? c.goldMs : c.silverMs)).slice(1)} s</b></li>`;
       show(
-        `done:${r.levelIndex}:${r.score}`,
+        `done:${r.levelIndex}:${r.timeTicks}`,
         'good',
-        `<div class="banner-title">Nível concluído!</div>
+        `<div class="banner-title">${record ? 'Novo recorde!' : 'Nível concluído!'}</div>
+         <div class="banner-time">${formatTime(c.timeMs)}</div>
          <div class="banner-stars" aria-label="${r.stars} de 3 estrelas">${stars(r.stars)}</div>
          <ul class="banner-list">
-           <li>Anéis ${r.rings}/${r.ringsTotal} <b>+${fmt(r.ringPoints)}</b></li>
-           <li>Estilo (melhor ×${r.bestMultiplier.toLocaleString('pt-BR')}) <b>+${fmt(r.stylePoints)}</b></li>
-           ${bonus}
-           <li class="banner-total">Nível <b>${fmt(r.score)}</b></li>
-           <li>Campanha <b>${fmt(runScore)}</b></li>
-           <li class="banner-muted">Tempo ${timeSec.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} s</li>
+           ${vsBest}
+           ${nextGoal}
+           <li>Impulso máximo <b>×${fmtMomentum(r.bestMomentum)}</b></li>
+           <li>Soltura perfeita / flips <b>${r.perfects} / ${r.flips}</b></li>
+           <li>Mísseis levados / quedas <b>${r.hits} / ${r.falls}</b></li>
+           <li class="banner-total">Campanha <b>${formatTime(c.runTimeMs)}</b></li>
+           ${c.ranked ? '' : '<li class="banner-muted">Run de teste: não grava recorde</li>'}
          </ul>
-         <div class="banner-hint"><kbd>Enter</kbd> ${isLastLevel ? 'para ver o resultado' : 'para o próximo nível'}</div>`,
-      );
-    },
-    showLevelFailed(rings, quota, livesLeft) {
-      show(
-        `fail:${rings}:${livesLeft}`,
-        'bad',
-        `<div class="banner-title">Faltaram anéis</div>
-         <div class="banner-sub">Você pegou ${rings}, precisava de ${quota}. −1 vida (${livesLeft} ${livesLeft === 1 ? 'restante' : 'restantes'}).</div>
-         <div class="banner-hint"><kbd>Enter</kbd> para tentar de novo</div>`,
+         <div class="banner-hint"><kbd>Enter</kbd> ${c.isLastLevel ? 'para ver o resultado' : 'para o próximo nível'}</div>`,
       );
     },
     hide() {

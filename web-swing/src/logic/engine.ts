@@ -2,8 +2,9 @@
  * Motor do jogo: step(state, input) → novo estado (puro e determinístico).
  *
  * Despacha pela fase (logic/progression.ts). Na fase 'playing', o tick é:
- * física do jogador (logic/player/simulate.ts) → queda no vão → anéis →
- * combo e pontos (logic/scoring.ts) → checkpoints → chegada.
+ * física do jogador (logic/player/simulate.ts, com a config efetiva do
+ * impulso) → queda no vão → mísseis (logic/threats.ts) → impulso
+ * (logic/momentum.ts) → checkpoints → chegada.
  * Fases terminais não avançam aqui: a cola chama advanceAfterLevel /
  * restartLevel / createRun.
  */

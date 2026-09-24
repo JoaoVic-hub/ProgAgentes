@@ -28,17 +28,17 @@
 src/
 ├── main.ts, pose-viewer.ts       # cola (únicos que conhecem todas as camadas)
 ├── architecture.test.ts           # regras de import/pureza
-├── app/      clock, flags, frame, camera-follow, save   # cola PURA e testável
-├── logic/    engine (despacho por fase), progression, scoring, highscores, save-data,
-│             aim, config, types, camera-rig, replay, testing, __fixtures__/
+├── app/      clock, flags, frame, camera-follow, save, threat-radar   # cola PURA e testável
+├── logic/    engine (despacho por fase), progression, momentum, threats, highscores,
+│             save-data, aim, config, types, camera-rig, replay, testing, __fixtures__/
 │   ├── math/    vec3, geom                        # pode ser importado como valor pelo render
 │   ├── level/   specs, generator, broadphase
 │   └── player/  simulate (tick físico), physics, collision, web
 ├── input/    mouse-keyboard                        # pointer lock → InputFrame
 ├── storage/  store                                 # localStorage → strings (sem regras)
-├── render/   scene, city, rings, web-line, camera, debug-draw, palette
+├── render/   scene, city, threats, web-line, camera, debug-draw, palette
 │   └── character/ pose, animator, orientation (puros), rig (three)
-└── ui/       overlay, crosshair, hud, banner, scoreboard, debug-panel, tuning-gui
+└── ui/       overlay, crosshair, hud, banner, scoreboard, threat-indicator, format, debug-panel, tuning-gui
 tools/        autopilot.ts (estratégia), autopilot.feel.ts (npm run feel), golden.gen.ts (npm run golden)
 ```
 
@@ -47,12 +47,13 @@ tools/        autopilot.ts (estratégia), autopilot.feel.ts (npm run feel), gold
 `engine.step` despacha pela fase (`logic/progression.ts`): countdown (só o olhar), respawning (espera e reaparece no checkpoint) ou playing. As fases terminais não avançam: só a cola (`main.ts`) sai delas.
 
 Na fase playing:
-1. Tick físico (`logic/player/simulate.ts`, abaixo)
-2. Queda no vão (`pos.y < killY`) → perde vida
-3. Anéis atravessados (segmento × disco)
-4. Combo e pontos (`logic/scoring.ts`)
-5. Checkpoints
-6. Chegada → conclui (bônus, estrelas) ou falha pela cota
+1. Config efetiva do impulso (`applyMomentum`, `logic/momentum.ts`)
+2. Tick físico (`logic/player/simulate.ts`, abaixo) com essa config
+3. Queda no vão (`pos.y < killY`) → impulso zerado, respawning (o relógio continua)
+4. Mísseis e lançadores (`logic/threats.ts`); acerto → `applyHit` (solta a teia, atordoa, empurra)
+5. Impulso (`updateMomentum`): ganhos e perdas a partir dos eventos da física, do acerto e do input
+6. Checkpoints (com o tempo parcial)
+7. Chegada → conclui (tempo, estrelas)
 
 Tick físico:
 1. Look
@@ -87,12 +88,13 @@ Uma regra nova entra no passo certo e ganha teste.
   - `runTicks`;
   - `lookAtFrom` (mirar num ponto);
   - `ropeAt` (corda com apoio exato, sem âncora virtual);
-  - `makeTestLevel([...], { rings, checkpoints, voids, ringQuota, finishZ })` para cenários de pontuação e progressão.
+  - `makeTestLevel([...], { launchers, checkpoints, voids, finishZ })` para cenários de mísseis e progressão.
+- Mísseis: monte o `ThreatState` à mão (míssil já armado, na posição e direção do cenário) e chame `stepThreats` com o jogador seguindo um caminho — como em `threats.test.ts`. Dificuldade se testa como **invariante** (janela de desvio que nunca cresce), não como número mágico.
 - `createGame(level)` devolve um estado já em playing (sandbox); `createRun()` começa a campanha no countdown.
 - Invariantes valem mais que valores mágicos: "a corda nunca excede L", "nunca termina dentro de um sólido" (*fuzz*), "energia ≥ 95%".
 - Testes de tempo usam limites folgados (ex.: gerar um nível em < 50 ms).
 - `npm run test` é a suíte padrão. `npm run feel` é só medição, fora do CI.
-- **Replay dourado:** mudou tuning ou regras de propósito? Rode `npm run golden` e confira no diff que a nova pontuação faz sentido. Se o teste quebrou sem você querer mudar nada, é regressão.
+- **Replay dourado:** mudou tuning, regras ou o gerador de propósito? Rode `npm run golden` e confira no diff que o novo tempo faz sentido. Se o teste quebrou sem você querer mudar nada, é regressão.
 - **Recordes e save:** a lógica é pura (`logic/highscores.ts`, `logic/save-data.ts`); a cola recebe o store por parâmetro (`app/save.ts` + `createMemoryStore` nos testes).
 
 ---
@@ -156,11 +158,11 @@ Uma regra nova entra no passo certo e ganha teste.
 | `?hz=120` | Física a 120 Hz (compara estabilidade) |
 | `?record=1` + F9 | Baixa os inputs gravados (JSON com `configHash`) |
 | `?view=pose` | Visualizador de poses (teclas 1–8) |
-| `?god=1` | Não perde vidas nem precisa da cota (run não ranqueado) |
+| `?god=1` | Mísseis não acertam (run não ranqueado) |
 | `?resetScores=1` | Apaga os recordes salvos ao abrir |
-| N / K / R | Pula para a chegada / perde uma vida / volta ao checkpoint (run não ranqueado) |
-| F1 | Wireframe das AABBs, discos de coleta dos anéis, checkpoints, raio de mira, âncora virtual → contato, vetor velocidade |
+| N / J / K / R | Pula para a chegada / avança 60 m (no ar) / simula um acerto de míssil / volta ao checkpoint (run não ranqueado) |
+| F1 | Wireframe das AABBs, lançadores com o círculo de alcance, checkpoints, raio de mira, âncora virtual → contato, vetor velocidade |
 | F2 | lil-gui de tuning ao vivo |
 | F3 / `.` | Congela a simulação / avança um tick |
 | `window.__webSwing` | `getState()`, `hashState()`, `loadReplay(json)` no console |
-| Painel `?debug=1` | Também mostra fase, vidas, ranqueado, pontos (anéis + estilo), chain, timer do combo e os últimos 8 eventos |
+| Painel `?debug=1` | Também mostra fase, tempo, ranqueado, impulso (valor, máximo, combo, ociosidade), mísseis vivos, estado de cada lançador (i/a/f/c), invulnerabilidade, acertos, quedas e os últimos 8 eventos |

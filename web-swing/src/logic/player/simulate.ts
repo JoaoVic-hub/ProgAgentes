@@ -1,6 +1,6 @@
 /**
  * Tick físico do jogador (puro e determinístico): movimento, teia, mira e
- * colisão. Chamado por logic/progression.ts na fase 'playing'; pontuação e
+ * colisão. Chamado por logic/progression.ts na fase 'playing'; impulso, mísseis e
  * progressão ficam fora daqui.
  *
  * Ordem do tick:

@@ -1,21 +1,24 @@
 /**
- * Fim de campanha (Etapa 2C): pontuação final, entrada de nome (se o run é
- * ranqueado e entra no top 10) e a tabela de recordes, com "Jogar de novo".
- * O mouse fica livre aqui (sem pointer lock) para digitar e clicar.
- * As telas completas de game over/vitória chegam na Etapa 3.
+ * Fim de campanha: tempo total, tempos e estrelas por nível, entrada de nome
+ * (se o run é ranqueado, começou no L1 e entra no top 10) e a tabela dos
+ * menores tempos, com "Jogar de novo". O mouse fica livre aqui (sem pointer
+ * lock) para digitar e clicar. As telas completas chegam na Etapa 3.
  */
 
 import type { HighscoreEntry } from '../logic/highscores';
 import type { LevelResult } from '../logic/types';
+import { formatTime } from './format';
 
 export interface ScoreboardData {
-  readonly victory: boolean;
-  readonly runScore: number;
+  readonly runTimeMs: number;
   readonly results: readonly LevelResult[];
-  /** Pode entrar na tabela (ranqueado + top 10). */
+  readonly tickHz: number;
+  /** Começou no L1? (senão a campanha não vale para a tabela geral) */
+  readonly fullCampaign: boolean;
+  /** Pode entrar na tabela (ranqueado + campanha completa + top 10). */
   readonly qualifies: boolean;
   readonly ranked: boolean;
-  readonly highscores: readonly HighscoreEntry[];
+  readonly times: readonly HighscoreEntry[];
   /** Posição (1-based) a destacar na tabela. */
   readonly highlight: number | null;
   /** false: sem localStorage (os recordes valem só nesta aba). */
@@ -31,7 +34,6 @@ export interface Scoreboard {
   dispose(): void;
 }
 
-const fmt = (n: number) => n.toLocaleString('pt-BR');
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 export function createScoreboard(root: HTMLElement): Scoreboard {
@@ -47,27 +49,29 @@ export function createScoreboard(root: HTMLElement): Scoreboard {
   function table(list: readonly HighscoreEntry[], highlight: number | null): string {
     if (list.length === 0) return '<p class="sb-empty">Nenhum recorde ainda.</p>';
     const rows = list
-      .map(
-        (e, i) =>
-          `<tr${highlight === i + 1 ? ' class="sb-me"' : ''}><td>${i + 1}</td><td>${esc(e.name)}</td><td>${fmt(e.score)}</td><td>${e.victory ? '🏁' : `L${e.levelReached}`}</td></tr>`,
-      )
+      .map((e, i) => `<tr${highlight === i + 1 ? ' class="sb-me"' : ''}><td>${i + 1}</td><td>${esc(e.name)}</td><td>${formatTime(e.timeMs)}</td></tr>`)
       .join('');
-    return `<table class="sb-table"><thead><tr><th>#</th><th>Nome</th><th>Pontos</th><th>Até</th></tr></thead><tbody>${rows}</tbody></table>`;
+    return `<table class="sb-table"><thead><tr><th>#</th><th>Nome</th><th>Tempo</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
 
   return {
     show(d) {
-      const levels = d.results.map((r) => `<li>L${r.levelIndex} ${esc(r.levelName)} <b>${fmt(r.score)}</b> ${'★'.repeat(r.stars)}</li>`).join('');
+      const levels = d.results
+        .map((r) => `<li>L${r.levelIndex} ${esc(r.levelName)} <b>${formatTime((r.timeTicks * 1000) / d.tickHz)}</b> <span class="sb-stars">${'★'.repeat(r.stars)}</span></li>`)
+        .join('');
+      const totalStars = d.results.reduce((n, r) => n + r.stars, 0);
       const note = !d.ranked
         ? '<p class="sb-note">Run de teste (flags de debug): não entra nos recordes.</p>'
-        : !d.persistent
-          ? '<p class="sb-note">Sem armazenamento no navegador: os recordes valem só nesta aba.</p>'
-          : '';
+        : !d.fullCampaign
+          ? '<p class="sb-note">A tabela geral só vale para a campanha completa, do nível 1 ao 5.</p>'
+          : !d.persistent
+            ? '<p class="sb-note">Sem armazenamento no navegador: os recordes valem só nesta aba.</p>'
+            : '';
       el.innerHTML = `
         <div class="sb-card">
-          <h2 class="sb-title" id="scoreboard-title">${d.victory ? 'Vitória!' : 'Fim de jogo'}</h2>
-          <div class="sb-score">${fmt(d.runScore)} <span>pontos</span></div>
-          ${levels ? `<ul class="sb-levels">${levels}</ul>` : '<p class="sb-empty">Nenhum nível concluído.</p>'}
+          <h2 class="sb-title" id="scoreboard-title">Campanha completa!</h2>
+          <div class="sb-score">${formatTime(d.runTimeMs)} <span>${totalStars}/${d.results.length * 3} ★</span></div>
+          ${levels ? `<ul class="sb-levels">${levels}</ul>` : ''}
           ${
             d.qualifies
               ? `<form class="sb-form"><label for="sb-name">Novo recorde! Seu nome:</label>
@@ -75,7 +79,7 @@ export function createScoreboard(root: HTMLElement): Scoreboard {
                  <button type="submit">Salvar</button></form>`
               : ''
           }
-          <div class="sb-table-wrap">${table(d.highscores, d.highlight)}</div>
+          <div class="sb-table-wrap">${table(d.times, d.highlight)}</div>
           ${note}
           <button class="sb-again" type="button">Jogar de novo</button>
         </div>`;

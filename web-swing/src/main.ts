@@ -1,19 +1,19 @@
 /**
- * main.ts — cola do Web Swing (Etapa 2: campanha com pontuação e recordes).
+ * main.ts — cola do Web Swing (Etapa 2: campanha contra o relógio, impulso e mísseis).
  *
  * Único arquivo (junto com pose-viewer.ts) que conhece todas as camadas:
  * cria a campanha, liga input → step() → render/UI. A simulação roda em
  * ticks fixos (app/clock.ts); o render interpola entre o tick anterior e o
  * atual e usa o look ao vivo do mouse para a câmera. As fases terminais
- * (nível concluído/falhado, fim de jogo, vitória) só saem por aqui:
- * Enter → advanceAfterLevel/restartLevel; fim de run → placar e recordes.
+ * (nível concluído, vitória) só saem por aqui: Enter → advanceAfterLevel;
+ * vitória → placar e recordes de tempo.
  *
  * Ferramentas de dev (só em `npm run dev`):
  *   ?debug=1  painel + FPS     ?level=N  ?seed=N     ?cam=free  câmera livre
  *   ?slowmo=0.25              ?hz=120               ?record=1 + F9 baixa inputs
- *   ?god=1 sem perder vidas   ?resetScores=1        ?view=pose visualizador de poses
- *   F1 wireframes/raios/anéis · F2 tuning · F3 congela · "." avança 1 tick
- *   N pula para a chegada · K perde vida · R volta ao checkpoint
+ *   ?god=1 mísseis não acertam ?resetScores=1       ?view=pose visualizador de poses
+ *   F1 wireframes/raios/lançadores · F2 tuning · F3 congela · "." avança 1 tick
+ *   N pula para a chegada · J avança 60 m · K simula um acerto de míssil · R volta ao checkpoint
  */
 
 import { Vector3 } from 'three';
@@ -22,12 +22,14 @@ import type { ClockConfig } from './app/clock';
 import { flagsAffectGameplay, parseFlags } from './app/flags';
 import { createCameraFollow, updateCameraFollow } from './app/camera-follow';
 import type { CameraFollowState } from './app/camera-follow';
-import { interpolatePlayer } from './app/frame';
-import { loadSave, recordHighscore, recordLevelBests, resetSave, runQualifies, writeSave } from './app/save';
+import { interpolateMissiles, interpolatePlayer } from './app/frame';
+import { loadSave, recordHighscore, recordLevelBests, resetSave, runQualifies, runTimeMs, writeSave } from './app/save';
+import { threatRadar } from './app/threat-radar';
 import { DEFAULT_GAME_CONFIG, secondsToTicks } from './logic/config';
-import { advanceAfterLevel, createRun, restartLevel, step } from './logic/engine';
-import { debugJumpToFinish, debugLoseLife, debugRespawn } from './logic/progression';
-import { multiplierFor } from './logic/scoring';
+import { advanceAfterLevel, createRun, step } from './logic/engine';
+import { debugHit, debugJumpToFinish, debugRespawn, debugWarpAhead } from './logic/progression';
+import { chestOf } from './logic/threats';
+import { ticksToMs } from './logic/highscores';
 import { LEVEL_SPECS } from './logic/level/specs';
 import { configHash, encodeInputs, hashState, replayRecording } from './logic/replay';
 import type { InputRecording } from './logic/replay';
@@ -37,8 +39,8 @@ import type { GameConfig, GameEvent, GameState, InputFrame, Level } from './logi
 import { createGameScene } from './render/scene';
 import { createCityView } from './render/city';
 import type { CityView } from './render/city';
-import { createRingsView } from './render/rings';
-import type { RingsView } from './render/rings';
+import { createThreatsView } from './render/threats';
+import type { ThreatsView } from './render/threats';
 import { createWebLine } from './render/web-line';
 import { applyCameraPose } from './render/camera';
 import { createCharacterRig } from './render/character/rig';
@@ -51,6 +53,8 @@ import { createCrosshair } from './ui/crosshair';
 import { createHud } from './ui/hud';
 import { createBanner } from './ui/banner';
 import { createScoreboard } from './ui/scoreboard';
+import type { ScoreboardData } from './ui/scoreboard';
+import { createThreatIndicator } from './ui/threat-indicator';
 import type { DebugPanel } from './ui/debug-panel';
 import type { TuningGui } from './ui/tuning-gui';
 
@@ -118,9 +122,9 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
   // views que dependem do nível: recriadas quando state.level muda
   let viewLevel: Level | null = null;
   let city: CityView | null = null;
-  let ringsView: RingsView | null = null;
+  let threatsView: ThreatsView | null = null;
   let debugDraw: DebugDraw | null = null;
-  let makeDebugDraw: ((level: Level, ringSlack: number) => DebugDraw) | null = null;
+  let makeDebugDraw: ((level: Level, activationRange: number) => DebugDraw) | null = null;
   let camState: CameraFollowState = createCameraFollow(state.level, { feet: state.level.start, vel: state.player.vel, yaw: 0, pitch: 0.15 }, config.rig);
 
   function resetCamera() {
@@ -134,15 +138,15 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     const level = state.level;
     viewLevel = level;
     city?.dispose();
-    ringsView?.dispose();
+    threatsView?.dispose();
     city = createCityView(level, { maxAnisotropy });
     view.scene.add(city.group);
-    ringsView = createRingsView(level);
-    view.scene.add(ringsView.group);
+    threatsView = createThreatsView(level);
+    if (flags.cam !== 'free') view.scene.add(threatsView.group);
     if (debugDraw && makeDebugDraw) {
       const visible = debugDraw.isVisible();
       debugDraw.dispose();
-      debugDraw = makeDebugDraw(level, config.scoring.ringSlack);
+      debugDraw = makeDebugDraw(level, config.missiles.activationRange);
       view.scene.add(debugDraw.group);
       debugDraw.setVisible(visible);
     }
@@ -158,11 +162,16 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
   const hud = createHud(uiRoot);
   const banner = createBanner(uiRoot);
   const crosshair = createCrosshair(uiRoot);
+  const threatIndicator = createThreatIndicator(uiRoot);
   const scoreboard = createScoreboard(uiRoot);
   const overlay = createOverlay(uiRoot);
   const levelLabel = () => `Nível ${state.level.spec.index} — ${state.level.spec.name}`;
+  const msOf = (ticks: number) => ticksToMs(ticks, config.tickHz);
+  const levelBestMs = (index: number): number | null => save.bestByLevel[String(index)]?.bestTimeMs ?? null;
   let freeControls: { update(): void } | null = null;
   let goBannerUntil = 0;
+  /** Recorde do nível antes da tentativa que acabou de terminar (para o "vs. recorde"). */
+  let previousBestMs: number | null = null;
 
   if (DEV && flags.cam === 'free') {
     crosshair.setVisible(false);
@@ -201,44 +210,37 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     if (state.phase === 'level_complete') {
       e.preventDefault();
       state = advanceAfterLevel(state);
-    } else if (state.phase === 'level_failed') {
-      e.preventDefault();
-      state = restartLevel(state);
     }
   });
 
-  // fim de run: solta o mouse, grava os melhores por nível e mostra o placar
+  function scoreboardData(qualifies: boolean, highlight: number | null): ScoreboardData {
+    return {
+      runTimeMs: runTimeMs(state),
+      results: state.results,
+      tickHz: config.tickHz,
+      fullCampaign: state.startLevel === 1,
+      qualifies,
+      ranked: state.ranked,
+      times: save.times,
+      highlight,
+      persistent: store.persistent,
+    };
+  }
+
+  // fim da campanha (vitória): solta o mouse, grava os melhores por nível e mostra o placar
   function handleRunEnd() {
     runEnded = true;
     save = recordLevelBests(save, state);
     writeSave(store, save);
     if (document.pointerLockElement) document.exitPointerLock();
     overlay.hide();
-    scoreboard.show({
-      victory: state.phase === 'victory',
-      runScore: state.runScore,
-      results: state.results,
-      qualifies: runQualifies(save, state),
-      ranked: state.ranked,
-      highscores: save.highscores,
-      highlight: null,
-      persistent: store.persistent,
-    });
+    scoreboard.show(scoreboardData(runQualifies(save, state), null));
   }
   scoreboard.onSubmitName((name) => {
     const r = recordHighscore(save, state, name, Date.now());
     save = r.save;
     writeSave(store, save);
-    scoreboard.show({
-      victory: state.phase === 'victory',
-      runScore: state.runScore,
-      results: state.results,
-      qualifies: false,
-      ranked: state.ranked,
-      highscores: save.highscores,
-      highlight: r.position,
-      persistent: store.persistent,
-    });
+    scoreboard.show(scoreboardData(false, r.position));
   });
   scoreboard.onPlayAgain(() => {
     scoreboard.hide();
@@ -267,7 +269,8 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
       /** Reexecuta uma gravação (JSON do F9) e devolve o hash final e se a config bate. */
       loadReplay: (rec: InputRecording) => {
         const r = replayRecording(rec, config);
-        return { hash: r.hash, tick: r.state.tick, phase: r.state.phase, levelScore: r.state.levelScore, configMatches: r.configMatches, reproducible: rec.reproducible };
+        const last = r.state.results[r.state.results.length - 1];
+        return { hash: r.hash, tick: r.state.tick, phase: r.state.phase, timeTicks: last?.timeTicks ?? null, configMatches: r.configMatches, reproducible: rec.reproducible };
       },
     };
     // carregamento preguiçoso com a promise guardada: F1/F2 apertados de novo antes do
@@ -287,7 +290,7 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
         e.preventDefault();
         debugDrawLoading ??= import('./render/debug-draw').then(({ createDebugDraw }) => {
           makeDebugDraw = createDebugDraw;
-          const d = createDebugDraw(state.level, config.scoring.ringSlack);
+          const d = createDebugDraw(state.level, config.missiles.activationRange);
           view.scene.add(d.group);
           debugDraw = d;
           return d;
@@ -313,8 +316,12 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
         downloadRecording();
       } else if (e.code === 'KeyN') {
         cheat(debugJumpToFinish);
+      } else if (e.code === 'KeyJ') {
+        cheat((st) => debugWarpAhead(st));
+        prevState = state; // teleporte: sem interpolar
+        resetCamera();
       } else if (e.code === 'KeyK') {
-        cheat(debugLoseLife);
+        cheat(debugHit);
       } else if (e.code === 'KeyR') {
         cheat(debugRespawn);
       }
@@ -378,7 +385,7 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
 
     syncLevelViews();
     handleEvents(events, now);
-    if ((state.phase === 'game_over' || state.phase === 'victory') && !runEnded) handleRunEnd();
+    if (state.phase === 'victory' && !runEnded) handleRunEnd();
 
     // animação anda no tempo da SIMULAÇÃO (parada na pausa/F3, lenta no slowmo); a câmera usa o tempo real
     const simDtSec = running && !frozen ? (realDtMs * flags.slowmo) / 1000 : ticksThisFrame / config.tickHz;
@@ -398,47 +405,68 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
       else if (e.type === 'respawned') {
         prevState = state;
         resetCamera();
-      } else if (e.type === 'level_complete' && state.ranked) {
-        // melhor por nível salvo na hora (não depende de terminar a campanha)
-        save = recordLevelBests(save, state);
-        writeSave(store, save);
+        threatsView?.reset();
+      } else if (e.type === 'missile_exploded') {
+        threatsView?.explode(e.pos, e.hitPlayer);
+      } else if (e.type === 'level_complete') {
+        previousBestMs = levelBestMs(e.result.levelIndex);
+        if (state.ranked) {
+          // melhor por nível salvo na hora (não depende de terminar a campanha)
+          save = recordLevelBests(save, state);
+          writeSave(store, save);
+        }
       }
       if (DEV && e.type !== 'web_missed') {
-        eventLog.push(`${state.tick} ${e.type}${'points' in e ? ` +${e.points}` : ''}${'reason' in e ? ` (${e.reason})` : ''}`);
+        const extra = e.type === 'momentum_gain' ? ` +${e.gain} → ${e.value.toFixed(2)}` : e.type === 'momentum_loss' ? ` ${e.from.toFixed(2)} → ${e.to.toFixed(2)}` : '';
+        eventLog.push(`${state.tick} ${e.type}${'kind' in e ? ` ${String(e.kind)}` : ''}${'reason' in e ? ` (${e.reason})` : ''}${extra}`);
         if (eventLog.length > 8) eventLog.shift();
       }
     }
-    hud.popups(events);
+    hud.popups(events, config.tickHz);
   }
 
   function updateUi(now: number) {
     const s = state;
     const cfg = config;
     const playingLike = s.phase === 'countdown' || s.phase === 'playing' || s.phase === 'respawning';
+    const spec = s.level.spec;
     hud.setVisible(!runEnded && flags.cam !== 'free');
     crosshair.setVisible(playingLike && flags.cam !== 'free');
-    const chainStep = cfg.scoring.chainPerStep;
+    threatIndicator.setVisible(!runEnded && flags.cam !== 'free');
+    const timeMs = msOf(s.progress.ticks);
+    const goldMs = spec.goldTime * 1000;
+    const silverMs = spec.silverTime * 1000;
+    const v = s.player.vel;
     hud.update({
       levelLabel: levelLabel(),
-      levelScore: s.levelScore,
-      runScore: s.runScore,
-      lives: s.lives,
-      maxLives: cfg.progression.lives,
-      multiplier: multiplierFor(s.style.chain, cfg.scoring),
-      chain: s.style.chain,
-      chainProgress: multiplierFor(s.style.chain, cfg.scoring) >= cfg.scoring.maxMultiplier ? 1 : (s.style.chain % chainStep) / chainStep,
-      rings: s.ringsCollected.filter(Boolean).length,
-      ringsTotal: s.level.rings.length,
-      quota: s.level.ringQuota,
+      timeMs,
+      targetStars: timeMs <= goldMs ? 3 : timeMs <= silverMs ? 2 : 1,
+      targetMs: timeMs <= goldMs ? goldMs : timeMs <= silverMs ? silverMs : null,
+      bestMs: levelBestMs(spec.index),
+      speed: Math.hypot(v.x, v.y, v.z),
+      momentum: s.momentum.value,
+      momentumMax: cfg.momentum.max,
+      chain: s.momentum.chain,
+      stunned: s.player.stunTicks > 0,
     });
+    threatIndicator.update(threatRadar(s, controller.getLiveLook().yaw, cfg));
 
-    if (s.phase === 'countdown') banner.showCountdown(levelLabel(), Math.max(1, Math.ceil(s.phaseTicks / cfg.tickHz)));
-    else if (s.phase === 'respawning') banner.showRespawn(s.lives);
+    if (s.phase === 'countdown') {
+      banner.showCountdown({ levelLabel: levelLabel(), value: Math.max(1, Math.ceil(s.phaseTicks / cfg.tickHz)), goldMs, silverMs, bestMs: levelBestMs(spec.index) });
+    } else if (s.phase === 'respawning') banner.showRespawn();
     else if (s.phase === 'level_complete') {
       const r = s.results[s.results.length - 1];
-      banner.showLevelComplete(r, s.runScore, s.level.spec.index === LEVEL_SPECS.length, r.timeTicks / cfg.tickHz);
-    } else if (s.phase === 'level_failed') banner.showLevelFailed(s.ringsCollected.filter(Boolean).length, s.level.ringQuota, s.lives);
-    else if (s.phase === 'playing' && now < goBannerUntil) banner.showGo();
+      banner.showLevelComplete({
+        result: r,
+        timeMs: msOf(r.timeTicks),
+        previousBestMs,
+        goldMs,
+        silverMs,
+        runTimeMs: runTimeMs(s),
+        isLastLevel: spec.index === LEVEL_SPECS.length,
+        ranked: s.ranked,
+      });
+    } else if (s.phase === 'playing' && now < goBannerUntil) banner.showGo();
     else banner.hide();
   }
 
@@ -493,7 +521,19 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     const aiming = state.phase === 'playing' && !p.rope;
     webLine.updateMarker(aiming ? state.aim.point : null, view.camera, state.aim.source === 'assist');
     crosshair.update(state.aim, p.rope !== null);
-    ringsView?.update(state.ringsCollected, timeSec, simDtSec);
+    const warnTicks = Math.max(1, secondsToTicks(config.missiles.warnTime, config.tickHz));
+    threatsView?.update(
+      {
+        launchers: state.threats.launchers.map((ls) => ({
+          phase: ls.phase,
+          warn: ls.phase === 'aiming' ? Math.min(1, (ls.ticks + alpha) / warnTicks) : ls.phase === 'firing' ? 1 : 0,
+        })),
+        target: chestOf(interp.feet),
+        missiles: interpolateMissiles(prevState.threats.missiles, state.threats.missiles, alpha),
+      },
+      timeSec,
+      simDtSec,
+    );
 
     if (debugDraw?.isVisible()) debugDraw.setDynamic(debugSegments());
     view.render();
@@ -531,12 +571,13 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     const missPct = shots ? Math.round((100 * s.stats.webMisses) / shots) : 0;
     return [
       `L${s.level.spec.index} ${s.level.spec.name} · seed ${s.level.seed} · ${config.tickHz} Hz${flags.slowmo !== 1 ? ` · slowmo ${flags.slowmo}` : ''}${frozen ? ' · CONGELADO (F3)' : ''}`,
-      `fase ${s.phase}${s.phaseTicks ? ` (${s.phaseTicks})` : ''} · vidas ${s.lives}${s.god ? ' (god)' : ''} · ${s.ranked ? 'ranqueado' : 'NÃO ranqueado'} · cp ${s.checkpointIndex}`,
+      `fase ${s.phase}${s.phaseTicks ? ` (${s.phaseTicks})` : ''}${s.god ? ' · god' : ''} · ${s.ranked ? 'ranqueado' : 'NÃO ranqueado'} · cp ${s.checkpointIndex} · tempo ${(s.progress.ticks / config.tickHz).toFixed(2)} s`,
       `tick ${s.tick} (+${ticksThisFrame}) · alpha ${alpha.toFixed(2)}`,
       `modo ${p.mode}${p.grounded ? ` (${p.groundKind})` : ''} · anim ${animState.current}${p.stunTicks ? ' · ATORDOADO' : ''}`,
       `pos (${f(p.pos.x)}, ${f(p.pos.y)}, ${f(p.pos.z)}) · |v| ${f(speed)} m/s · chegada ${f(s.level.finishZ - p.pos.z)} m`,
       p.rope ? `teia L ${f(p.rope.length)} / alvo ${f(p.rope.targetLength)} · impulso ${p.rope.impulseUsed ? 'usado' : 'disponível'}` : 'teia —',
-      `pontos ${s.levelScore} (anéis ${s.progress.ringPoints} + estilo ${s.progress.stylePoints}) · chain ${s.style.chain} · timer ${s.style.comboTimerTicks}`,
+      `impulso ${s.momentum.value.toFixed(2)} (máx ${s.momentum.best.toFixed(1)}) · combo ${s.momentum.chain} · ocioso ${s.momentum.idleTicks} · desde soltura ${Math.min(s.momentum.sinceReleaseTicks, 9999)}`,
+      `mísseis ${s.threats.missiles.length} · lançadores ${s.threats.launchers.map((l) => l.phase[0]).join('')} · invulnerável ${s.threats.invulnerableTicks} · acertos ${s.progress.hits} · quedas ${s.progress.falls}`,
       `mira ${s.aim.source}${s.aim.fail ? ` (direto: ${s.aim.fail})` : ''} · cliques ${shots} · sem alvo ${s.stats.webMisses} (${missPct}%)`,
       `hash ${lastHash} (a cada 30 ticks)`,
       `draw calls ${info.calls} · triângulos ${(info.triangles / 1000).toFixed(1)}k · geo ${info.geometries} · tex ${info.textures}`,

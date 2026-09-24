@@ -42,16 +42,31 @@ export interface ZRange {
   readonly end: number;
 }
 
-/** Anel coletável: disco que o jogador precisa atravessar. */
-export interface Ring {
+/** Lançador de mísseis num telhado. */
+export interface Launcher {
   readonly id: number;
-  readonly center: Vec3;
-  /** Normal unitária do disco (sentido de passagem). */
-  readonly normal: Vec3;
-  readonly radius: number;
-  readonly gold: boolean;
-  /** Em rota arriscada: baixo, perto da rua, ou sobre um vão. */
-  readonly risky: boolean;
+  /** Boca do lançador (de onde saem os mísseis). */
+  readonly pos: Vec3;
+  readonly side: -1 | 1;
+  /** Prédio onde ele está. */
+  readonly solidId: number;
+}
+
+/** Ameaças do nível (plano revisado: sobem de dificuldade a cada fase). */
+export interface ThreatSpec {
+  readonly launchers: number;
+  /** Mísseis por salva. */
+  readonly salvo: number;
+  /** m/s (constante após o lançamento). */
+  readonly missileSpeed: number;
+  /** Curva máxima do míssil (rad/s): quanto maior, mais difícil de despistar. */
+  readonly turnRate: number;
+  /** 0 = persegue a posição atual; 1 = mira onde o jogador vai estar. */
+  readonly lead: number;
+  /** Tempo entre salvas do mesmo lançador (s). */
+  readonly cooldown: number;
+  /** Lançadores em pares dos dois lados (fogo cruzado). */
+  readonly crossfire: boolean;
 }
 
 export interface Checkpoint {
@@ -83,18 +98,11 @@ export interface LevelSpec {
   readonly glassRatio: number;
   /** Vãos sem chão (com gruas para ancorar). */
   readonly voids: { readonly count: number; readonly length: Range };
-  readonly rings: {
-    readonly count: number;
-    readonly gold: number;
-    readonly radius: number;
-    /** Fração dos anéis em rota arriscada (os dourados sempre são). */
-    readonly riskyRatio: number;
-  };
-  /** Fração mínima de anéis para concluir o nível (cota). */
-  readonly minRingRatio: number;
   readonly checkpoints: number;
-  /** Pontuação do nível para a 3ª estrela. */
-  readonly parScore: number;
+  readonly threats: ThreatSpec;
+  /** Tempos (s) para ★★★ e ★★; concluir já vale ★. */
+  readonly goldTime: number;
+  readonly silverTime: number;
 }
 
 /** Índice espacial em faixas de Z: cells[i] lista ids de sólidos que tocam a faixa i. */
@@ -120,11 +128,10 @@ export interface Level {
   readonly halfWorldWidth: number;
   /** Vãos sem chão, em ordem de Z. */
   readonly voids: readonly ZRange[];
-  readonly rings: readonly Ring[];
+  /** Em ordem de Z. */
+  readonly launchers: readonly Launcher[];
   /** Em ordem de Z (index 1..n). */
   readonly checkpoints: readonly Checkpoint[];
-  /** Anéis mínimos para concluir o nível. */
-  readonly ringQuota: number;
 }
 
 // ---------------------------------------------------------------- configuração
@@ -228,39 +235,63 @@ export interface CameraRigConfig {
   readonly pitchMaxDeg: number;
 }
 
-export interface ScoringConfig {
-  readonly ringBase: number;
-  readonly goldRingBase: number;
-  /** Folga além do raio do anel para contar a passagem. */
-  readonly ringSlack: number;
-  /** Velocidade (m/s) para +50% e +100% nos pontos do anel. */
-  readonly speedBonusHalf: number;
-  readonly speedBonusFull: number;
-  /** A cada chainPerStep eventos de estilo o multiplicador sobe multiplierStep, até maxMultiplier. */
-  readonly chainPerStep: number;
-  readonly multiplierStep: number;
-  readonly maxMultiplier: number;
-  readonly swingPoints: number;
-  readonly swingMinSpeed: number;
-  readonly perfectPoints: number;
-  readonly flipPoints: number;
-  readonly flipAfterPerfectPoints: number;
-  readonly speedStreakSpeed: number;
-  readonly speedStreakTime: number;
-  readonly speedStreakPoints: number;
-  /** Tempo sem evento de estilo/anel até o combo quebrar. */
-  readonly comboTimeout: number;
-  /** Tempo apoiado na rua / num teto até o combo quebrar. */
+/** Impulso (momentum): sobe com execução precisa, cai com erros e acelera o balanço. */
+export interface MomentumConfig {
+  readonly max: number;
+  /** Qualidade mínima de soltura para contar como swing bem feito (a "perfeita" vem de web.perfectQuality). */
+  readonly goodQuality: number;
+  /** Abaixo disto a soltura é ruim (ângulo muito errado) e custa impulso. */
+  readonly poorQuality: number;
+  readonly gainSwing: number;
+  /** Somado ao gainSwing na soltura perfeita. */
+  readonly gainPerfect: number;
+  readonly gainFlip: number;
+  readonly lossMiss: number;
+  readonly lossPoorRelease: number;
+  readonly lossLateFlip: number;
+  /** Janela depois de soltar em que um Espaço no ar fora do tempo conta como flip atrasado (s). */
+  readonly lateFlipWindow: number;
+  /** Fração do impulso mantida em cada tropeço. */
+  readonly keepOnStreet: number;
+  readonly keepOnBonk: number;
+  readonly keepOnHit: number;
   readonly streetGrace: number;
+  /** Parado num telhado além disto conta como ocioso. */
   readonly roofGrace: number;
-  readonly allRingsBonus: number;
-  readonly noStreetBonus: number;
-  /** Fração de anéis para a 2ª estrela. */
-  readonly twoStarRingRatio: number;
+  /** Sem nenhum ganho por este tempo, o impulso escorre (idleDecay por segundo). */
+  readonly idleTimeout: number;
+  readonly idleDecay: number;
+  // efeitos por nível de impulso
+  readonly swingMaxPerLevel: number;
+  readonly boostPerLevel: number;
+  readonly assistPerLevel: number;
+  readonly pumpPerLevel: number;
+  /** Fração do arrasto cortada por nível. */
+  readonly dragCutPerLevel: number;
+}
+
+/** Parâmetros globais dos mísseis (os da fase vêm de LevelSpec.threats). */
+export interface MissileConfig {
+  /** Distância em que o lançador trava a mira. */
+  readonly activationRange: number;
+  /** O lançador desiste quando o jogador já passou dele por mais que isto (m). */
+  readonly behindLimit: number;
+  /** Aviso (laser) antes de disparar (s). */
+  readonly warnTime: number;
+  readonly salvoInterval: number;
+  readonly lifetime: number;
+  /** Fase de subida sem guiagem logo após o disparo (s). */
+  readonly armTime: number;
+  readonly hitRadius: number;
+  readonly hitStun: number;
+  readonly knockback: number;
+  readonly knockUp: number;
+  /** Depois de um acerto, novos mísseis não têm efeito por este tempo (s). */
+  readonly invulnerableTime: number;
+  readonly maxAlive: number;
 }
 
 export interface ProgressionConfig {
-  readonly lives: number;
   readonly countdownTime: number;
   readonly respawnTime: number;
 }
@@ -271,7 +302,8 @@ export interface GameConfig {
   readonly web: WebConfig;
   readonly aim: AimConfig;
   readonly rig: CameraRigConfig;
-  readonly scoring: ScoringConfig;
+  readonly momentum: MomentumConfig;
+  readonly missiles: MissileConfig;
   readonly progression: ProgressionConfig;
 }
 
@@ -355,11 +387,10 @@ export interface AimResult {
 // ---------------------------------------------------------------- eventos
 
 export type ReleaseReason = 'manual' | 'above' | 'wall';
-export type StyleKind = 'swing' | 'perfect' | 'flip' | 'speed';
-export type ComboBreakReason = 'street' | 'roof' | 'timeout' | 'bonk' | 'respawn';
-export type LifeLossReason = 'fall' | 'quota' | 'debug';
+export type MomentumGainKind = 'swing' | 'perfect' | 'flip';
+export type MomentumLossReason = 'miss' | 'poor_release' | 'late_flip' | 'street' | 'idle' | 'bonk' | 'hit' | 'fall';
 
-/** Eventos efêmeros do tick: HUD, áudio, animação e (Etapa 2) pontuação consomem. */
+/** Eventos efêmeros do tick: HUD, áudio, animação e efeitos visuais consomem. */
 export type GameEvent =
   | { readonly type: 'jumped' }
   | { readonly type: 'landed'; readonly speed: number; readonly kind: GroundKind }
@@ -379,18 +410,20 @@ export type GameEvent =
   | { readonly type: 'web_impulse' }
   | { readonly type: 'flip'; readonly afterPerfect: boolean }
   | { readonly type: 'bonk'; readonly speed: number }
-  // pontuação (Etapa 2)
-  | { readonly type: 'ring_collected'; readonly ringId: number; readonly gold: boolean; readonly points: number; readonly speedBonus: number }
-  | { readonly type: 'style'; readonly kind: StyleKind; readonly points: number; readonly multiplier: number }
-  | { readonly type: 'combo_lost'; readonly reason: ComboBreakReason; readonly chain: number }
-  // progressão (Etapa 2)
+  // impulso
+  | { readonly type: 'momentum_gain'; readonly kind: MomentumGainKind; readonly gain: number; readonly value: number }
+  | { readonly type: 'momentum_loss'; readonly reason: MomentumLossReason; readonly from: number; readonly to: number }
+  // ameaças
+  | { readonly type: 'launcher_aiming'; readonly launcherId: number }
+  | { readonly type: 'missile_launched'; readonly missileId: number; readonly launcherId: number }
+  | { readonly type: 'missile_exploded'; readonly missileId: number; readonly pos: Vec3; readonly hitPlayer: boolean }
+  | { readonly type: 'player_hit'; readonly missileId: number }
+  // progressão
   | { readonly type: 'go' }
-  | { readonly type: 'checkpoint'; readonly index: number }
-  | { readonly type: 'life_lost'; readonly reason: LifeLossReason; readonly livesLeft: number }
+  | { readonly type: 'checkpoint'; readonly index: number; readonly timeTicks: number }
+  | { readonly type: 'fell' }
   | { readonly type: 'respawned'; readonly checkpoint: number }
   | { readonly type: 'level_complete'; readonly result: LevelResult }
-  | { readonly type: 'level_failed'; readonly rings: number; readonly quota: number }
-  | { readonly type: 'game_over' }
   | { readonly type: 'victory' };
 
 // ---------------------------------------------------------------- estado
@@ -401,52 +434,73 @@ export interface SessionStats {
 }
 
 /**
- * countdown      — 3-2-1 antes de jogar (só o olhar é livre)
- * playing        — jogo rolando
- * respawning     — caiu num vão; reaparece no último checkpoint
- * level_complete — cruzou a chegada com a cota de anéis (espera o "continuar")
- * level_failed   — cruzou sem a cota: perdeu uma vida (espera o "tentar de novo")
- * game_over      — acabaram as vidas
+ * countdown      — 3-2-1 antes de jogar (só o olhar é livre; o relógio não corre)
+ * playing        — jogo rolando (o relógio corre)
+ * respawning     — caiu num vão; reaparece no último checkpoint (o relógio continua)
+ * level_complete — cruzou a chegada (espera o "continuar")
  * victory        — concluiu o último nível
- * As 4 últimas são terminais para step(): só a cola (main) sai delas.
+ * As 2 últimas são terminais para step(): só a cola (main) sai delas.
  */
-export type GamePhase = 'countdown' | 'playing' | 'respawning' | 'level_complete' | 'level_failed' | 'game_over' | 'victory';
+export type GamePhase = 'countdown' | 'playing' | 'respawning' | 'level_complete' | 'victory';
 
-export interface StyleState {
-  /** Eventos de estilo encadeados sem quebrar o combo. */
+export interface MomentumState {
+  /** 0..max (contínuo; o nível exibido é o piso). */
+  readonly value: number;
+  /** Acertos seguidos desde o último tropeço (só exibição). */
   readonly chain: number;
-  readonly comboTimerTicks: number;
-  readonly speedStreakTicks: number;
+  /** Ticks sem nenhum ganho. */
+  readonly idleTicks: number;
   readonly streetTicks: number;
   readonly roofTicks: number;
-  readonly bestMultiplier: number;
+  /** Ticks desde a última soltura (para detectar flip atrasado). */
+  readonly sinceReleaseTicks: number;
+  readonly best: number;
+}
+
+export interface Missile {
+  readonly id: number;
+  readonly pos: Vec3;
+  readonly vel: Vec3;
+  readonly ageTicks: number;
+  readonly launcherId: number;
+}
+
+export type LauncherPhase = 'idle' | 'aiming' | 'firing' | 'cooldown';
+
+export interface LauncherState {
+  readonly phase: LauncherPhase;
+  readonly ticks: number;
+  readonly shotsLeft: number;
+}
+
+export interface ThreatState {
+  /** launchers[i] ↔ level.launchers[i]. */
+  readonly launchers: readonly LauncherState[];
+  readonly missiles: readonly Missile[];
+  readonly nextMissileId: number;
+  readonly invulnerableTicks: number;
 }
 
 /** Acumuladores do nível em andamento. */
 export interface LevelProgress {
+  /** Tempo do nível (o relógio corre em playing e respawning). */
   readonly ticks: number;
-  readonly ringPoints: number;
-  readonly stylePoints: number;
-  /** Pousou na rua em algum momento (perde o bônus "sem tocar a rua"). */
-  readonly touchedStreet: boolean;
   readonly falls: number;
+  readonly hits: number;
+  readonly perfects: number;
+  readonly flips: number;
 }
 
 export interface LevelResult {
   readonly levelIndex: number;
   readonly levelName: string;
-  /** Pontuação final do nível, com bônus. */
-  readonly score: number;
-  readonly ringPoints: number;
-  readonly stylePoints: number;
-  readonly allRingsBonus: number;
-  readonly noStreetBonus: number;
-  readonly rings: number;
-  readonly ringsTotal: number;
-  readonly stars: 1 | 2 | 3;
-  /** Só estatística (o tempo não pontua). */
   readonly timeTicks: number;
-  readonly bestMultiplier: number;
+  readonly stars: 1 | 2 | 3;
+  readonly falls: number;
+  readonly hits: number;
+  readonly perfects: number;
+  readonly flips: number;
+  readonly bestMomentum: number;
 }
 
 export interface GameState {
@@ -462,19 +516,18 @@ export interface GameState {
   readonly phase: GamePhase;
   /** Ticks restantes da fase (countdown, respawning). */
   readonly phaseTicks: number;
-  readonly ringsCollected: readonly boolean[];
-  readonly style: StyleState;
+  readonly momentum: MomentumState;
+  readonly threats: ThreatState;
   readonly progress: LevelProgress;
-  /** Pontos do nível em andamento (sem os bônus de fim de nível). */
-  readonly levelScore: number;
-  /** Soma dos níveis concluídos na campanha. */
-  readonly runScore: number;
-  readonly lives: number;
+  /** Soma dos tempos dos níveis concluídos na campanha. */
+  readonly runTicks: number;
+  /** Nível em que a campanha começou (só campanhas desde o L1 entram no ranking geral). */
+  readonly startLevel: number;
   /** Último checkpoint alcançado (0 = largada). */
   readonly checkpointIndex: number;
   /** false quando alguma flag de debug mudou o jogo: não entra nos recordes. */
   readonly ranked: boolean;
-  /** ?god=1: não perde vidas nem precisa da cota. */
+  /** ?god=1: mísseis não têm efeito. */
   readonly god: boolean;
   /** ?seed=N vale só para o nível inicial da campanha. */
   readonly seedOverride: number | null;

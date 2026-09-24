@@ -1,6 +1,50 @@
 # Changelog — web-swing
 
-## 0.2.0 — Etapa 2: pontuação, níveis e recordes (2026-09-24)
+## 0.2.0 — Etapa 2 (redesenho): contra o relógio, impulso e mísseis (2026-09-24)
+
+Pedido do dono do projeto: tirar a pontuação por anéis. O objetivo passa a ser **terminar cada nível no menor tempo**, jogar bem deixa o herói **mais rápido**, e **mísseis quase teleguiados** perseguem o jogador. A versão com anéis ficou no checkpoint `web-swing-v0.2.0-aneis` (seção abaixo).
+
+### Adicionado
+- **Impulso** (`logic/momentum.ts`, ADR-022):
+  - medidor de 0 a 5 que sobe com swings bem soltos, solturas perfeitas e flips;
+  - cai com teia no vazio, soltura ruim e flip atrasado; mantém só uma parte ao tocar a rua, num bonk ou num míssil; zera na queda; escorre sem manobras;
+  - vira velocidade pela config efetiva do tick (`applyMomentum`): teto do balanço, boost, assistência, bombeio e arrasto. O mesmo arco vai de 32,5 para 44,9 m/s (+38%).
+- **Mísseis** (`logic/threats.ts`, ADR-023):
+  - lançadores nos telhados ou no topo das gruas, com aviso de 0,9 s (laser + lâmpada), salvas e recarga;
+  - guiagem com curva limitada e previsão da trajetória; explodem ao bater em prédios (cobertura); acerto contínuo (sem túnel a 57 m/s) com atordoamento, empurrão e invulnerabilidade;
+  - dificuldade por fase: 3 → 14 lançadores, salva de 1 → 3, 38 → 57 m/s, curva de 1,0 → 2,2 rad/s, previsão de 0 → 100%, fogo cruzado no L4+.
+- **Contra o relógio** (ADR-024): sem vidas nem fim de jogo; queda no vão = checkpoint com o relógio correndo; estrelas por tempo (ouro/prata por nível); tempo parcial nos checkpoints.
+- **Recordes por tempo:** top 10 dos menores tempos de campanha completa; melhor tempo e estrelas por nível; save v2 com migração do v1 (anéis) e backup.
+- **Visual** (`render/threats.ts`): lançadores que seguem o jogador, laser e lâmpada de aviso, mísseis com brilho e rastro de fumaça, explosões. Tudo instanciado (8 draw calls).
+- **UI:**
+  - HUD com cronômetro, próxima estrela em jogo, recorde, velocidade, medidor de impulso e combo; popups de ganho/perda e checkpoint; flash ao levar míssil;
+  - **radar de ameaças** em volta do retículo (`app/threat-radar.ts` puro + `ui/threat-indicator.ts`);
+  - resumo do nível com tempo, estrelas, diferença para o recorde e quanto faltou para a próxima estrela;
+  - placar de campanha com a tabela de tempos;
+  - `ui/format.ts` (tempos truncados em centésimos).
+- **Debug:** J avança 60 m (testar trechos com lançadores/vãos); K simula um acerto de míssil; o painel mostra impulso, mísseis e o estado de cada lançador.
+- **Ferramentas:** o piloto automático clica só com alvo válido, faz flips e mede tempo, impulso, mísseis e acertos; `npm run feel` roda 3 modos por nível.
+
+### Removido
+- Anéis, `logic/scoring.ts`, `render/rings.ts`, vidas, cota, bônus de pontos e as fases `level_failed` e `game_over`.
+- `segmentCrossesDisc` (só servia para os anéis).
+
+### Mudado
+- Estrelas por tempo no lugar de anéis/par (`LevelSpec.goldTime`/`silverTime`, provisórios).
+- `LevelSpec.threats` no lugar de anéis e cota; `Level.launchers`.
+- Lançadores 0,5 m da quina e 2 m acima do telhado: com 1 m / 1,5 m, a própria laje tapava a vista (só ~50% das posições no alcance eram visíveis; o smoke test no navegador não via míssil nenhum).
+- Replay dourado regravado sem god mode (cobre os mísseis do L1); confere tempo, estrelas, acertos, flips e impulso.
+- `hashState` inclui impulso, ameaças e o relógio.
+
+### Medições
+- **Testes:** 196 (Vitest), todos verdes.
+- **Bundle de produção:** 616 kB → **165 kB gzip** (orçamento: 250 kB).
+- **Piloto** (`npm run feel`): L1–L5 concluídos. Mísseis por nível 3/5/14/12/30; acertos (sem desviar) 0/1/2/3/6.
+- **Desvio** (teste): combinações que escapam, de 36: 34/34/29/21/15 do L1 ao L5.
+
+## 0.2.0-aneis — Etapa 2 (1ª versão, substituída): pontuação, níveis e recordes (2026-09-24)
+
+> Checkpoint `web-swing-v0.2.0-aneis`. Substituída pelo redesenho acima; mantida aqui como histórico.
 
 ### Adicionado
 - **2A (pontuação e HUD):**

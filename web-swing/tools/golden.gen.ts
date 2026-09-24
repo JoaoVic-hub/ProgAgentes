@@ -18,6 +18,7 @@ import { fly } from './autopilot';
 
 it('gera src/logic/__fixtures__/replay-l1.json', () => {
   const start = createRun(DEFAULT_GAME_CONFIG, { startLevel: 1 });
+  // sem god: o L1 tem lançadores, então o replay também cobre mísseis e acertos
   const run = fly(start);
   expect(run.final.phase).toBe('level_complete');
   const recording: InputRecording = {
@@ -36,13 +37,15 @@ it('gera src/logic/__fixtures__/replay-l1.json', () => {
     expected: {
       phase: run.final.phase,
       tick: run.final.tick,
-      levelScore: run.final.levelScore,
-      runScore: run.final.runScore,
-      rings: r.rings,
+      timeTicks: r.timeTicks,
+      runTicks: run.final.runTicks,
       stars: r.stars,
+      hits: r.hits,
+      flips: r.flips,
+      bestMomentum: r.bestMomentum,
       hash: hashState(run.final),
     },
   };
   writeFileSync('src/logic/__fixtures__/replay-l1.json', JSON.stringify(fixture) + '\n');
-  console.log(`replay dourado: ${run.frames.length} ticks, ${recording.inputs.length} trechos RLE, ${run.final.levelScore} pontos`);
+  console.log(`replay dourado: ${run.frames.length} ticks, ${recording.inputs.length} trechos RLE, L1 em ${(r.timeTicks / DEFAULT_GAME_CONFIG.tickHz).toFixed(2)} s, ${r.stars}★, ${run.metrics.missiles} mísseis, ${r.hits} acertos`);
 });
