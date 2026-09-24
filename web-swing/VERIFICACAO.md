@@ -65,7 +65,7 @@ Roteiro para conferir cada etapa no navegador.
 **Metas de feel do plano** (confira no painel `?debug=1`; `npm run feel` mede isso automaticamente):
 - cruzeiro de 25–35 m/s: ✅ medido 32,8;
 - concluir o L1 sem tocar a rua: ✅;
-- 1º swing a partir do repouso de 18–22 m/s: ⚠️ medido ~29, **decisão pendente** (PRD §7). Diga se o arranque parece forte demais.
+- 1º swing a partir do repouso: ✅ medido ~29 m/s (meta revisada de 18–22 para ~29, decisão de 2026-09-24; PRD §7).
 
 ## Etapa 1C.2 — Assistência de mira e manobras
 
@@ -97,7 +97,7 @@ Roteiro para conferir cada etapa no navegador.
 | 2026-09-24 | Node 24 / Vitest 2.1.9 | `npm run verify` (119 testes, typecheck, build) | ✅ |
 | 2026-09-24 | Revisão adversarial (3 lentes) | 30 achados brutos; os confirmados foram corrigidos, com testes (ver CHANGELOG) | ✅ |
 | 2026-09-24 | Chrome headless (puppeteer-core, SwiftShader) | Overlay; pointer lock obtido pelo clique; mira direta na fachada; swing de 21 → 31 m/s; soltura + flip; pouso; F1; `?cam=free&level=5`; `?view=pose` (swing, run). Console sem erros. | ✅ (o FPS headless não é representativo; o Esc não pode ser testado headless) |
-| 2026-09-24 | `npm run feel` | L1–L5 concluídos pelo piloto automático. L1: 31,6 s, cruzeiro de 32,8 m/s, 0 toques na rua, 0 bonks. | ✅ (1º swing acima da meta: pendente) |
+| 2026-09-24 | `npm run feel` | L1–L5 concluídos pelo piloto automático. L1: 31,6 s, cruzeiro de 32,8 m/s, 0 toques na rua, 0 bonks. | ✅ |
 
 ## Registro da verificação manual
 

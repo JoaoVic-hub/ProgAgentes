@@ -330,7 +330,7 @@ A revisão reproduziu um exploit. Cliques de 1 tick a ~7,5 Hz, mais Espaço, lev
 
 ## ADR-016: Tuning de feel medido (histórico)
 
-**Status:** Aceito (o 1º swing aguarda decisão; ver PRD §7)
+**Status:** Aceito (1º swing de ~29 m/s aceito pelo dono do projeto em 2026-09-24)
 **Data:** 2026-09-24
 
 ### Contexto
@@ -351,7 +351,7 @@ Variantes descartadas na rodada 4, com números medidos:
 
 ### Consequências
 - ✅ Cruzeiro e toques na rua dentro das metas. Os 5 níveis são concluídos pelo piloto.
-- ⚠️ O 1º swing a partir do repouso fica em 28–36 m/s, contra a meta de 18–22. O motivo físico está no PRD §7. **Decisão pendente.**
+- ✅ O 1º swing a partir do repouso fica em 28–36 m/s (meta original: 18–22). Decisão (2026-09-24): **aceito** — o "zip" forte de saída é o preço de não raspar a rua (PRD §7).
 
 ---
 

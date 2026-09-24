@@ -68,7 +68,7 @@
   - gravação F9 com config errada → `reproducible` + `loadReplay`.
 - **Overlay:** foco no botão, `role="dialog"`, `aria-live` e aviso quando o navegador recusa o pointer lock.
 - **Testes que passavam pelo motivo errado** (soltura por parede, colisão contra corda) → reescritos e checados por mutação.
-- **Tuning recalibrado com medições** (ADR-016). O 1º swing a partir do repouso segue acima da meta do plano: **decisão pendente** (PRD §7).
+- **Tuning recalibrado com medições** (ADR-016). O 1º swing a partir do repouso (~29 m/s, acima da meta original de 18–22) foi **aceito** em 2026-09-24 (PRD §7).
 
 ### Medições
 - **Testes:** 119 (Vitest), todos verdes.

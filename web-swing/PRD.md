@@ -110,18 +110,18 @@ As metas vêm do plano aprovado. Os valores foram medidos pelo piloto automátic
 
 | Métrica | Meta do plano | Medido (L1 · L1–L5) | Situação |
 |---|---|---|---|
-| Velocidade máxima no 1º swing a partir do repouso | 18–22 m/s | 29 · 28–36 m/s | ⚠️ **acima** — ver nota |
+| Velocidade máxima no 1º swing a partir do repouso | ~~18–22 m/s~~ 28–36 m/s (revisada, ver nota) | 29 · 28–36 m/s | ✅ aceito |
 | Velocidade de cruzeiro | 25–35 m/s | 32,8 · 26–33 m/s | ✅ |
 | Duração do arco | 1,2–1,8 s | 1,87 · 1,7–2,2 s | ⚠️ levemente acima |
 | Atravessar o L1 sem tocar a rua | 0 toques | 0 | ✅ |
 | *Bonks* no L1 | — | 0 | ✅ |
 | Os 5 níveis concluídos pelo piloto | — | 5/5 (L1 em 31,6 s) | ✅ |
 
-> **Nota (decisão pendente com o dono do projeto):**
+> **Nota (decidido em 2026-09-24: aceitar ~29 m/s):**
 >
 > A energia do 1º swing a partir da rua vem do *reel*. Ele precisa recolher 10–17 m de corda para o arco não raspar o asfalto, e esse trabalho vira 25–35 m/s.
 >
-> Baixar para 18–22 m/s exige uma de três coisas:
+> Baixar para 18–22 m/s exigiria uma de três coisas (descartadas):
 > - aceitar que o 1º arco arraste na rua (medido: 45 ticks raspando com reel de 6 m/s);
 > - mirar âncoras mais próximas e baixas;
 > - trocar o "zip" de saída por outra mecânica (ex.: impulso vertical maior sem reel).
