@@ -80,6 +80,38 @@ export const DEFAULT_GAME_CONFIG: GameConfig = {
     pitchMinDeg: -65,
     pitchMaxDeg: 75,
   },
+  // Plano §2. Os limiares de velocidade foram adaptados de 28/40 para 26/34 m/s:
+  // depois do retuning da Etapa 1 (ADR-016) o teto no balanço é 36 m/s, e com
+  // 40 m/s o bônus cheio só existiria em queda livre (ADR-017).
+  scoring: {
+    ringBase: 100,
+    goldRingBase: 400,
+    ringSlack: 0.4,
+    speedBonusHalf: 26,
+    speedBonusFull: 34,
+    chainPerStep: 4,
+    multiplierStep: 0.5,
+    maxMultiplier: 5,
+    swingPoints: 10,
+    swingMinSpeed: 10,
+    perfectPoints: 50,
+    flipPoints: 100,
+    flipAfterPerfectPoints: 200,
+    speedStreakSpeed: 26,
+    speedStreakTime: 2,
+    speedStreakPoints: 40,
+    comboTimeout: 3,
+    streetGrace: 0.15,
+    roofGrace: 1.2,
+    allRingsBonus: 1000,
+    noStreetBonus: 500,
+    twoStarRingRatio: 0.75,
+  },
+  progression: {
+    lives: 3,
+    countdownTime: 3,
+    respawnTime: 1.2,
+  },
 };
 
 /** Converte uma duração em segundos para ticks (mínimo 1 se a duração > 0). */

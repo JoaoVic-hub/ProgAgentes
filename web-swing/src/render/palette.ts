@@ -14,6 +14,12 @@ export const PALETTE = {
   laneLine: 0xf2e6c9,
   hero: 0xe23b3b,
   heroAccent: 0x2250c8,
+  ring: 0x5ee6ff,
+  ringRisky: 0xff7ad9,
+  ringGold: 0xffc93c,
+  crane: 0xf2b134,
+  water: 0x0b1030,
+  checkpoint: 0x7cffb2,
 } as const;
 
 export const RENDER_CONFIG = {

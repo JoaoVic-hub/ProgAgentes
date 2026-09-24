@@ -19,6 +19,7 @@ const KIND_COLORS: Record<SolidKind, number> = {
   street: 0x6c757d,
   building: 0x80ffdb,
   glass: 0x4cc9f0,
+  crane: 0xffd166,
   bounds: 0xff4d6d,
 };
 
@@ -46,16 +47,49 @@ export interface DebugDraw {
 
 const MAX_DYNAMIC_SEGMENTS = 256;
 
-export function createDebugDraw(level: Level): DebugDraw {
+const RING_SEGMENTS = 24;
+
+/** ringSlack: folga de coleta além do raio (os discos mostram o alcance real da coleta). */
+export function createDebugDraw(level: Level, ringSlack = 0): DebugDraw {
   const group = new Group();
   group.name = 'debug-draw';
   group.visible = false;
 
   const solids = level.solids;
-  const positions = new Float32Array(solids.length * EDGES.length * 2 * 3);
+  const segments = solids.length * EDGES.length + level.rings.length * RING_SEGMENTS + level.checkpoints.length;
+  const positions = new Float32Array(segments * 2 * 3);
   const colors = new Float32Array(positions.length);
   const c = new Color();
   let k = 0;
+  const pushSeg = (a: readonly number[], b: readonly number[], hex: number) => {
+    c.setHex(hex);
+    for (const p of [a, b]) {
+      positions.set(p, k);
+      colors.set([c.r, c.g, c.b], k);
+      k += 3;
+    }
+  };
+  // discos de coleta dos anéis (plano ⟂ normal; os anéis do jogo têm normal +Z)
+  for (const r of level.rings) {
+    const rad = r.radius + ringSlack;
+    const n = r.normal;
+    // base do plano do disco
+    const ux = Math.abs(n.y) < 0.9 ? { x: n.z, y: 0, z: -n.x } : { x: 1, y: 0, z: 0 };
+    const ul = Math.hypot(ux.x, ux.y, ux.z) || 1;
+    const u = { x: ux.x / ul, y: ux.y / ul, z: ux.z / ul };
+    const v = { x: n.y * u.z - n.z * u.y, y: n.z * u.x - n.x * u.z, z: n.x * u.y - n.y * u.x };
+    const point = (i: number) => {
+      const a = (i / RING_SEGMENTS) * Math.PI * 2;
+      const cs = Math.cos(a) * rad;
+      const sn = Math.sin(a) * rad;
+      return [r.center.x + u.x * cs + v.x * sn, r.center.y + u.y * cs + v.y * sn, r.center.z + u.z * cs + v.z * sn];
+    };
+    for (let i = 0; i < RING_SEGMENTS; i++) pushSeg(point(i), point(i + 1), r.gold ? 0xffc93c : 0x5ee6ff);
+  }
+  // checkpoints: linha na rua de uma calçada à outra
+  const halfW = level.spec.avenueWidth / 2;
+  for (const cp of level.checkpoints) pushSeg([-halfW, 0.2, cp.z], [halfW, 0.2, cp.z], 0x7cffb2);
+
   for (const s of solids) {
     const { min, max } = s.box;
     const corners = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => [

@@ -28,19 +28,33 @@
 src/
 ├── main.ts, pose-viewer.ts       # cola (únicos que conhecem todas as camadas)
 ├── architecture.test.ts           # regras de import/pureza
-├── app/      clock, flags, frame, camera-follow   # cola PURA e testável
-├── logic/    engine, aim, config, types, camera-rig, replay, testing
+├── app/      clock, flags, frame, camera-follow, save   # cola PURA e testável
+├── logic/    engine (despacho por fase), progression, scoring, highscores, save-data,
+│             aim, config, types, camera-rig, replay, testing, __fixtures__/
 │   ├── math/    vec3, geom                        # pode ser importado como valor pelo render
 │   ├── level/   specs, generator, broadphase
-│   └── player/  physics, collision, web
+│   └── player/  simulate (tick físico), physics, collision, web
 ├── input/    mouse-keyboard                        # pointer lock → InputFrame
-├── render/   scene, city, web-line, camera, debug-draw, palette
-│   └── character/ pose (puro), animator (puro), rig (three)
-└── ui/       overlay, crosshair, debug-panel, tuning-gui
-tools/        autopilot.feel.ts                     # npm run feel
+├── storage/  store                                 # localStorage → strings (sem regras)
+├── render/   scene, city, rings, web-line, camera, debug-draw, palette
+│   └── character/ pose, animator, orientation (puros), rig (three)
+└── ui/       overlay, crosshair, hud, banner, scoreboard, debug-panel, tuning-gui
+tools/        autopilot.ts (estratégia), autopilot.feel.ts (npm run feel), golden.gen.ts (npm run golden)
 ```
 
-### 3.1 Ordem do tick (`logic/engine.ts`)
+### 3.1 Ordem do tick
+
+`engine.step` despacha pela fase (`logic/progression.ts`): countdown (só o olhar), respawning (espera e reaparece no checkpoint) ou playing. As fases terminais não avançam: só a cola (`main.ts`) sai delas.
+
+Na fase playing:
+1. Tick físico (`logic/player/simulate.ts`, abaixo)
+2. Queda no vão (`pos.y < killY`) → perde vida
+3. Anéis atravessados (segmento × disco)
+4. Combo e pontos (`logic/scoring.ts`)
+5. Checkpoints
+6. Chegada → conclui (bônus, estrelas) ou falha pela cota
+
+Tick físico:
 1. Look
 2. Timers
 3. Mira
@@ -72,10 +86,14 @@ Uma regra nova entra no passo certo e ganha teste.
   - `stateWith` (sobrescreve o jogador);
   - `runTicks`;
   - `lookAtFrom` (mirar num ponto);
-  - `ropeAt` (corda com apoio exato, sem âncora virtual).
+  - `ropeAt` (corda com apoio exato, sem âncora virtual);
+  - `makeTestLevel([...], { rings, checkpoints, voids, ringQuota, finishZ })` para cenários de pontuação e progressão.
+- `createGame(level)` devolve um estado já em playing (sandbox); `createRun()` começa a campanha no countdown.
 - Invariantes valem mais que valores mágicos: "a corda nunca excede L", "nunca termina dentro de um sólido" (*fuzz*), "energia ≥ 95%".
 - Testes de tempo usam limites folgados (ex.: gerar um nível em < 50 ms).
 - `npm run test` é a suíte padrão. `npm run feel` é só medição, fora do CI.
+- **Replay dourado:** mudou tuning ou regras de propósito? Rode `npm run golden` e confira no diff que a nova pontuação faz sentido. Se o teste quebrou sem você querer mudar nada, é regressão.
+- **Recordes e save:** a lógica é pura (`logic/highscores.ts`, `logic/save-data.ts`); a cola recebe o store por parâmetro (`app/save.ts` + `createMemoryStore` nos testes).
 
 ---
 
@@ -138,7 +156,11 @@ Uma regra nova entra no passo certo e ganha teste.
 | `?hz=120` | Física a 120 Hz (compara estabilidade) |
 | `?record=1` + F9 | Baixa os inputs gravados (JSON com `configHash`) |
 | `?view=pose` | Visualizador de poses (teclas 1–8) |
-| F1 | Wireframe das AABBs, raio de mira, âncora virtual → contato, vetor velocidade |
+| `?god=1` | Não perde vidas nem precisa da cota (run não ranqueado) |
+| `?resetScores=1` | Apaga os recordes salvos ao abrir |
+| N / K / R | Pula para a chegada / perde uma vida / volta ao checkpoint (run não ranqueado) |
+| F1 | Wireframe das AABBs, discos de coleta dos anéis, checkpoints, raio de mira, âncora virtual → contato, vetor velocidade |
 | F2 | lil-gui de tuning ao vivo |
 | F3 / `.` | Congela a simulação / avança um tick |
-| `window.__webSwing` | `getState()`, `hashState()` no console |
+| `window.__webSwing` | `getState()`, `hashState()`, `loadReplay(json)` no console |
+| Painel `?debug=1` | Também mostra fase, vidas, ranqueado, pontos (anéis + estilo), chain, timer do combo e os últimos 8 eventos |

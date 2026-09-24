@@ -1,5 +1,37 @@
 # Changelog — web-swing
 
+## 0.2.0 — Etapa 2: pontuação, níveis e recordes (2026-09-24)
+
+### Adicionado
+- **2A (pontuação e HUD):**
+  - Anéis (comuns, de risco e dourados) numa rota suave; coleta contínua (segmento × disco), sem "pular" anéis em alta velocidade.
+  - `logic/scoring.ts`: anel × bônus de velocidade × multiplicador; swing, soltura perfeita, flip e sequência de velocidade; quebras de combo.
+  - `render/rings.ts` (toros instanciados com "estouro") e `ui/hud.ts` (pontos, multiplicador com progresso, anéis/cota, vidas, popups empilháveis).
+  - F1 mostra os discos de coleta e os checkpoints; o painel mostra os últimos eventos.
+- **2B (conclusão e progressão):**
+  - `logic/progression.ts`: countdown, playing, respawning, level_complete, level_failed, game_over, victory (ADR-018).
+  - 3 vidas, checkpoints, cota de anéis, bônus (+1000/+500), estrelas.
+  - Vãos sem chão no L3–L5 com gruas ancoráveis, água e bordas visuais (ADR-019).
+  - Faixa central com 3-2-1, "Caiu!", resumo do nível e `Enter` para seguir.
+  - `?god=1` e atalhos N/K/R (tiram o run do ranking).
+  - Replay dourado do L1 (`npm run golden`, ADR-021) e gravação F9 no formato v2 (RLE), reproduzível por `__webSwing.loadReplay`.
+- **2C (recordes):**
+  - `logic/highscores.ts` (top 10, desempate, nome saneado, melhor por nível), `logic/save-data.ts` (parse que nunca lança, versão, migração), `storage/store.ts` (localStorage com queda para memória) e `app/save.ts` (backup do save corrompido; ADR-020).
+  - Placar de fim de campanha: entrada de nome, tabela e "Jogar de novo"; `?resetScores=1`.
+- **Ferramentas:** piloto automático compartilhado (`tools/autopilot.ts`) com fases, respawn e métricas de pontos/anéis; `npm run golden`.
+
+### Mudado
+- Limiares de velocidade da pontuação adaptados de 28/40 para 26/34 m/s (ADR-017).
+- Gerador: prédio de vidro nunca de frente para outro de vidro — o teste de alcançabilidade achou 60 m sem âncora no L4 (ADR-019). O L1 continua idêntico.
+- `logic/engine.ts` virou o despacho por fase; o tick físico da Etapa 1 foi para `logic/player/simulate.ts`, sem mudar o comportamento.
+- Debug: o painel e o FPS foram para baixo à esquerda (o topo é do HUD).
+
+### Medições
+- **Testes:** 172 (Vitest), todos verdes.
+- **Bundle de produção:** 596,8 kB → **158,6 kB gzip** (orçamento: 250 kB).
+- **Piloto** (`npm run feel`, god mode): os 5 níveis concluídos; 2 quedas nos vãos do L5.
+- **Par:** provisório (o piloto não mira anéis; ver PRD §7).
+
 ## 0.1.0 — Etapa 1: campo, movimento, teia e animações (2026-09-24)
 
 ### Adicionado

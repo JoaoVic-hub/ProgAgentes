@@ -17,6 +17,7 @@ import {
   InstancedMesh,
   Matrix4,
   Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   PlaneGeometry,
   Quaternion,
@@ -209,29 +210,69 @@ export function createCityView(level: Level, opts: { maxAnisotropy: number }): C
     group.add(glassMesh);
   }
 
-  // chão (calçadas/becos) e rua
-  const street = level.solids.find((s) => s.kind === 'street');
-  if (street) {
+  // chão (calçadas/becos) e rua — um trecho por segmento (a rua é interrompida nos vãos)
+  const baseRoadTex: Texture = track(roadTexture(opts.maxAnisotropy));
+  const groundMat = track(new MeshStandardMaterial({ color: PALETTE.ground, roughness: 0.95 }));
+  for (const street of level.solids.filter((s) => s.kind === 'street')) {
     const { min, max } = street.box;
     const lenZ = max.z - min.z;
     const midZ = (min.z + max.z) / 2;
-    const groundGeo = track(new PlaneGeometry(max.x - min.x, lenZ));
-    const groundMat = track(new MeshStandardMaterial({ color: PALETTE.ground, roughness: 0.95 }));
-    const ground = new Mesh(groundGeo, groundMat);
+    const ground = new Mesh(track(new PlaneGeometry(max.x - min.x, lenZ)), groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.position.set(0, 0, midZ);
     ground.receiveShadow = true;
     group.add(ground);
 
-    const tex: Texture = track(roadTexture(opts.maxAnisotropy));
+    // clone compartilha a imagem (um upload só); só o repeat muda por trecho
+    const tex = track(baseRoadTex.clone());
     tex.repeat.set(1, lenZ / 24);
-    const roadGeo = track(new PlaneGeometry(level.spec.avenueWidth, lenZ));
     const roadMat = track(new MeshStandardMaterial({ map: tex, roughness: 0.9 }));
-    const road = new Mesh(roadGeo, roadMat);
+    const road = new Mesh(track(new PlaneGeometry(level.spec.avenueWidth, lenZ)), roadMat);
     road.rotation.x = -Math.PI / 2;
     road.position.set(0, 0.01, midZ);
     road.receiveShadow = true;
     group.add(road);
+  }
+
+  // vãos: água escura lá embaixo e as bordas de concreto do "viaduto quebrado" (só visual)
+  if (level.voids.length > 0) {
+    const waterMat = track(new MeshStandardMaterial({ color: PALETTE.water, roughness: 0.2, metalness: 0.6 }));
+    const edgeMat = track(new MeshStandardMaterial({ color: PALETTE.ground, roughness: 1 }));
+    const width = level.halfWorldWidth * 2;
+    const depth = -level.killY - 3;
+    for (const v of level.voids) {
+      const water = new Mesh(track(new PlaneGeometry(width, v.end - v.start)), waterMat);
+      water.rotation.x = -Math.PI / 2;
+      water.position.set(0, -depth, (v.start + v.end) / 2);
+      group.add(water);
+      for (const z of [v.start, v.end]) {
+        const edge = new Mesh(track(new BoxGeometry(width, depth, 1)), edgeMat);
+        edge.position.set(0, -depth / 2, z + (z === v.start ? -0.5 : 0.5));
+        group.add(edge);
+      }
+    }
+  }
+
+  // gruas (ancoram): torres amarelas
+  const cranes = level.solids.filter((s) => s.kind === 'crane');
+  if (cranes.length > 0) {
+    const craneMat = track(new MeshStandardMaterial({ color: PALETTE.crane, roughness: 0.6, metalness: 0.3 }));
+    const craneMesh = buildInstances(cranes, craneMat, [PALETTE.crane]);
+    track(craneMesh.geometry);
+    track(craneMesh);
+    group.add(craneMesh);
+  }
+
+  // faixas luminosas nos checkpoints
+  if (level.checkpoints.length > 0) {
+    const cpMat = track(new MeshBasicMaterial({ color: PALETTE.checkpoint, transparent: true, opacity: 0.55, depthWrite: false }));
+    const cpGeo = track(new PlaneGeometry(level.spec.avenueWidth, 1.2));
+    for (const cp of level.checkpoints) {
+      const strip = new Mesh(cpGeo, cpMat);
+      strip.rotation.x = -Math.PI / 2;
+      strip.position.set(0, 0.03, cp.z);
+      group.add(strip);
+    }
   }
 
   // arco de chegada: dois pilares e uma faixa quadriculada

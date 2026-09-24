@@ -14,7 +14,7 @@ Roteiro para conferir cada etapa no navegador.
 
 | # | Faça | Deve acontecer |
 |---|---|---|
-| 0.1 | `npm run verify` | Typecheck, build e testes verdes (119 testes). |
+| 0.1 | `npm run verify` | Typecheck, build e testes verdes (172 testes). |
 | 0.2 | Abra a página e redimensione a janela | A cena não distorce e não aparece barra de rolagem. |
 | 0.3 | Abra o DevTools → Console | Nenhum erro. |
 | 0.4 | `?debug=1` | Medidor de FPS no canto (≈ 60 num PC comum) e painel de texto. |
@@ -90,6 +90,43 @@ Roteiro para conferir cada etapa no navegador.
 
 ---
 
+## Etapa 2A — Pontuação e HUD
+
+| # | Faça | Deve acontecer |
+|---|---|---|
+| 2A.1 | Jogue o L1 com `?debug=1` | HUD: nome do nível e vidas (♥♥♥) no alto à esquerda; pontos, multiplicador (×1,0) e a barra de progresso no alto à direita. |
+| 2A.2 | Passe por dentro de um anel (ciano) | "+100 Anel" (ou mais, com velocidade) e o anel "estoura" e some. O contador vai para 1 / 14. |
+| 2A.3 | Passe por um anel acima de ~26 m/s | O popup diz "(velocidade)" e vale 150 (ou 200 acima de ~34 m/s). |
+| 2A.4 | Encadeie swings e flips sem tocar a rua | Popups "+10 Swing", "+100 Flip!"… A barra enche e o multiplicador sobe ×0,5 a cada 4 manobras. |
+| 2A.5 | Pouse na rua e fique parado | "Combo perdido — tocou a rua" e o multiplicador volta a ×1,0. Um raspão rápido (< 0,15 s) não quebra. |
+| 2A.6 | Fique 3 s sem nenhuma manobra | "Combo perdido — sem manobras". |
+| 2A.7 | F1 | Círculos em volta dos anéis (o alcance real da coleta) e as linhas verdes dos checkpoints. O painel mostra os últimos eventos, que batem com os popups. |
+
+## Etapa 2B — Conclusão de níveis e progressão
+
+| # | Faça | Deve acontecer |
+|---|---|---|
+| 2B.1 | Clique para jogar | Aparecem "Nível 1 — Avenida Aurora" e a contagem 3-2-1, depois "Já!". Durante a contagem dá para olhar em volta, mas não para andar. |
+| 2B.2 | Cruze o arco de chegada | Resumo: estrelas, anéis, estilo, bônus (+1000 todos os anéis / +500 sem tocar a rua), total do nível e da campanha, tempo. `Enter` leva ao nível 2. |
+| 2B.3 | No L2, cruze a chegada com poucos anéis (menos que a cota do HUD) | "Faltaram anéis… −1 vida". `Enter` reinicia o L2 com os pontos do nível zerados. |
+| 2B.4 | `?level=3` e caia no vão (sem chão, água lá embaixo) | "Caiu!", −1 vida, e em ~1 s reaparece no último checkpoint (faixa verde na rua), parado. Os anéis já pegos continuam pegos. |
+| 2B.5 | Nos vãos, use as gruas (torres amarelas) | A teia prende nas gruas e dá para atravessar sem cair. |
+| 2B.6 | Perca as 3 vidas | "Fim de jogo": o mouse é liberado e aparece o placar. |
+| 2B.7 | `?level=5&god=1` e aperte **N** | Resumo do L5 → `Enter` → **Vitória!** (run não ranqueado). |
+| 2B.8 | Compare o L1 com o L4 | O L4 é perceptivelmente mais difícil: mais largo, alturas irregulares, vidro, 2 vãos, anéis menores e cota de 50%. |
+| 2B.9 | Atalhos `?debug=1`: **K** e **R** | K: perde uma vida como numa queda. R: volta ao checkpoint sem perder vida. O painel passa a dizer "NÃO ranqueado". |
+
+## Etapa 2C — Recordes
+
+| # | Faça | Deve acontecer |
+|---|---|---|
+| 2C.1 | Jogue **sem flags** até o fim de jogo com alguma pontuação | "Novo recorde! Seu nome:" → digite e salve → o nome aparece destacado na tabela. |
+| 2C.2 | Aperte F5 e termine outra partida | A tabela anterior continua lá (persistiu no navegador). |
+| 2C.3 | DevTools → Application → Local Storage → mude `web-swing:v1:save` para `{lixo` e recarregue | O jogo abre normalmente, com a tabela vazia, e o valor ruim fica guardado em `web-swing:v1:save.bak`. |
+| 2C.4 | Abra numa aba anônima | Sem erros. Se o navegador bloquear o storage, o placar avisa que os recordes valem só nesta aba. |
+| 2C.5 | Termine uma partida com qualquer flag de jogo (`?level=2`, `?god=1`…) | O placar diz "Run de teste… não entra nos recordes" e não pede nome. |
+| 2C.6 | `?resetScores=1` | Os recordes somem. |
+
 ## Verificação automatizada feita no desenvolvimento
 
 | Data | Ambiente | O que foi verificado | Resultado |
@@ -98,6 +135,9 @@ Roteiro para conferir cada etapa no navegador.
 | 2026-09-24 | Revisão adversarial (3 lentes) | 30 achados brutos; os confirmados foram corrigidos, com testes (ver CHANGELOG) | ✅ |
 | 2026-09-24 | Chrome headless (puppeteer-core, SwiftShader) | Overlay; pointer lock obtido pelo clique; mira direta na fachada; swing de 21 → 31 m/s; soltura + flip; pouso; F1; `?cam=free&level=5`; `?view=pose` (swing, run). Console sem erros. | ✅ (o FPS headless não é representativo; o Esc não pode ser testado headless) |
 | 2026-09-24 | `npm run feel` | L1–L5 concluídos pelo piloto automático. L1: 31,6 s, cruzeiro de 32,8 m/s, 0 toques na rua, 0 bonks. | ✅ |
+| 2026-09-24 | Etapa 2: `npm run verify` | 172 testes (pontuação, progressão, alcançabilidade, recordes, save, replay dourado) + build 158,6 kB gzip | ✅ |
+| 2026-09-24 | Etapa 2: Chrome headless | Countdown com nome do nível → HUD somando (330 pts, ×1,5) → N → resumo com estrelas → Enter → L2 → 3×K → fim de jogo com o mouse liberado e placar (recorde persistido visível, aviso de run de teste) → save corrompido sem erro e com backup → formulário de nome recebe foco e envia. Console sem erros. | ✅ |
+| 2026-09-24 | Etapa 2: `npm run feel` (god mode) | L1–L5 concluídos; 2 quedas nos vãos do L5. | ✅ |
 
 ## Registro da verificação manual
 
@@ -106,3 +146,6 @@ Roteiro para conferir cada etapa no navegador.
 | | Chrome | 0–1D | | |
 | | Firefox | 0–1D | | |
 | | Edge | 0–1D | | |
+| | Chrome | 2A–2C | | |
+| | Firefox | 2A–2C | | |
+| | Edge | 2A–2C | | |

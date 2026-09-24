@@ -25,6 +25,7 @@ describe('Flags de depuração (query string)', () => {
   it('flags de câmera, câmera lenta, gravação, frequência e visualizador', () => {
     const f = parseFlags('?cam=free&slowmo=0.25&record=1&hz=120&view=pose', true);
     expect(f).toMatchObject({ cam: 'free', slowmo: 0.25, record: true, hz: 120, view: 'pose' });
+    expect(parseFlags('?god=1&resetScores=1', true)).toMatchObject({ god: true, resetScores: true });
     expect(parseFlags('?slowmo=0.001', true).slowmo).toBe(0.05);
     expect(parseFlags('?slowmo=4', true).slowmo).toBe(1);
   });
@@ -37,5 +38,7 @@ describe('Flags de depuração (query string)', () => {
     expect(flagsAffectGameplay(parseFlags('?debug=1', true))).toBe(false);
     expect(flagsAffectGameplay(parseFlags('?level=2', true))).toBe(true);
     expect(flagsAffectGameplay(parseFlags('?slowmo=0.5', true))).toBe(true);
+    expect(flagsAffectGameplay(parseFlags('?god=1', true))).toBe(true);
+    expect(flagsAffectGameplay(parseFlags('?resetScores=1', true))).toBe(false);
   });
 });

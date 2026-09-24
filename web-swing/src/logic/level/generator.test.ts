@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { generateLevel, LEVEL_Z_AFTER_FINISH, LEVEL_Z_BEFORE_START } from './generator';
 import { LEVEL_SPECS, getLevelSpec } from './specs';
 import { querySolidIds } from './broadphase';
-import { boxesOverlap } from '../math/geom';
+import { boxesOverlap, pointBoxDistance } from '../math/geom';
 import type { Level } from '../types';
 
 const LEVELS: Level[] = LEVEL_SPECS.map((spec) => generateLevel(spec));
@@ -74,11 +74,11 @@ describe('Gerador de níveis (determinismo e invariantes)', () => {
           expect(row[i].kind === 'glass' && row[i - 1].kind === 'glass').toBe(false);
         }
       }
-      for (const s of level.solids) expect(s.anchorable).toBe(s.kind === 'building');
+      for (const s of level.solids) expect(s.anchorable).toBe(s.kind === 'building' || s.kind === 'crane');
     }
   });
 
-  it('dificuldade cresce entre os níveis (comprimento, largura e vidro)', () => {
+  it('dificuldade cresce de forma monotônica entre as specs', () => {
     for (let i = 1; i < LEVEL_SPECS.length; i++) {
       const a = LEVEL_SPECS[i - 1];
       const b = LEVEL_SPECS[i];
@@ -86,6 +86,12 @@ describe('Gerador de níveis (determinismo e invariantes)', () => {
       expect(b.avenueWidth).toBeGreaterThanOrEqual(a.avenueWidth);
       expect(b.glassRatio).toBeGreaterThanOrEqual(a.glassRatio);
       expect(b.buildingHeight[1] - b.buildingHeight[0]).toBeGreaterThanOrEqual(a.buildingHeight[1] - a.buildingHeight[0]);
+      expect(b.voids.count).toBeGreaterThanOrEqual(a.voids.count);
+      expect(b.rings.count).toBeGreaterThanOrEqual(a.rings.count);
+      expect(b.rings.radius).toBeLessThanOrEqual(a.rings.radius);
+      expect(b.rings.riskyRatio).toBeGreaterThanOrEqual(a.rings.riskyRatio);
+      expect(b.minRingRatio).toBeGreaterThanOrEqual(a.minRingRatio);
+      expect(b.parScore).toBeGreaterThan(a.parScore);
     }
   });
 
@@ -111,6 +117,96 @@ describe('Broadphase em faixas de Z', () => {
         const got = new Set(querySolidIds(level.broadphase, z0, z1));
         const expected = level.solids.filter((s) => s.box.max.z >= z0 && s.box.min.z <= z1).map((s) => s.id);
         for (const id of expected) expect(got.has(id)).toBe(true);
+      }
+    }
+  });
+});
+
+describe('Anéis, vãos, gruas e checkpoints (Etapa 2)', () => {
+  it('quantidade de anéis, dourados e cota batem com a spec', () => {
+    for (const level of LEVELS) {
+      const spec = level.spec;
+      expect(level.rings).toHaveLength(spec.rings.count);
+      expect(level.rings.filter((r) => r.gold)).toHaveLength(spec.rings.gold);
+      expect(level.ringQuota).toBe(Math.ceil(spec.minRingRatio * spec.rings.count));
+      level.rings.forEach((r, i) => {
+        expect(r.id).toBe(i);
+        if (r.gold) expect(r.risky).toBe(true); // dourado é sempre de risco
+        if (i > 0) expect(r.center.z).toBeGreaterThan(level.rings[i - 1].center.z);
+        expect(r.center.z).toBeLessThan(level.finishZ);
+      });
+    }
+  });
+
+  it('nenhum anel fica dentro (ou a menos de max(3 m, raio + 1 m)) de um sólido', () => {
+    for (const level of LEVELS) {
+      for (const r of level.rings) {
+        const clearance = Math.max(3, r.radius + 1);
+        for (const s of level.solids) {
+          if (s.kind === 'bounds') continue;
+          expect(pointBoxDistance(r.center, s.box)).toBeGreaterThanOrEqual(clearance - 1e-9);
+        }
+      }
+    }
+  });
+
+  it('vãos: quantidade da spec, sem rua e sem prédios dentro, com gruas ancoráveis', () => {
+    for (const level of LEVELS) {
+      expect(level.voids).toHaveLength(level.spec.voids.count);
+      for (const v of level.voids) {
+        expect(v.end - v.start).toBeGreaterThanOrEqual(level.spec.voids.length[0] - 0.01);
+        expect(v.end - v.start).toBeLessThanOrEqual(level.spec.voids.length[1] + 0.01);
+        const inside = level.solids.filter((s) => s.box.max.z > v.start + 1e-6 && s.box.min.z < v.end - 1e-6 && s.kind !== 'bounds');
+        expect(inside.every((s) => s.kind === 'crane')).toBe(true);
+        expect(inside.length).toBeGreaterThanOrEqual(1);
+        expect(inside.every((s) => s.anchorable)).toBe(true);
+      }
+    }
+  });
+
+  it('checkpoints: quantidade da spec, em ordem, fora dos vãos e sobre a rua', () => {
+    for (const level of LEVELS) {
+      expect(level.checkpoints).toHaveLength(level.spec.checkpoints);
+      level.checkpoints.forEach((cp, i) => {
+        expect(cp.index).toBe(i + 1);
+        if (i > 0) expect(cp.z).toBeGreaterThan(level.checkpoints[i - 1].z);
+        expect(level.voids.some((v) => cp.z >= v.start - 5 && cp.z <= v.end + 1)).toBe(false);
+        expect(cp.spawn.y).toBe(0);
+        expect(level.solids.some((s) => s.kind === 'street' && s.box.min.z <= cp.z && s.box.max.z >= cp.z)).toBe(true);
+      });
+    }
+  });
+
+  it('alcançabilidade: a cada 5 m, do meio da avenida a 15 m de altura, há âncora à frente entre 8 e 45 m (inclusive sobre os vãos)', () => {
+    for (const level of LEVELS) {
+      const missing: number[] = [];
+      for (let z = 0; z <= level.finishZ; z += 5) {
+        const p = { x: 0, y: 15, z };
+        const ok = level.solids.some((s) => {
+          if (!s.anchorable || s.side === 0 || s.box.max.z < z || s.box.max.y < 20) return false;
+          const faceX = s.side < 0 ? s.box.max.x : s.box.min.x;
+          for (let zz = Math.max(z, s.box.min.z); zz <= s.box.max.z; zz += 1) {
+            for (const y of [20, (20 + s.box.max.y) / 2, s.box.max.y]) {
+              const d = Math.hypot(faceX - p.x, y - p.y, zz - p.z);
+              if (d >= 8 && d <= 45) return true;
+            }
+          }
+          return false;
+        });
+        if (!ok) missing.push(z);
+      }
+      expect({ level: level.spec.index, missing }).toEqual({ level: level.spec.index, missing: [] });
+    }
+  });
+
+  it('nenhum prédio de vidro fica de frente para outro de vidro (evita trechos sem âncora)', () => {
+    for (const level of LEVELS) {
+      const glass = level.solids.filter((s) => s.kind === 'glass');
+      for (const a of glass) {
+        for (const b of glass) {
+          if (a.side === b.side) continue;
+          expect(a.box.min.z < b.box.max.z && a.box.max.z > b.box.min.z).toBe(false);
+        }
       }
     }
   });

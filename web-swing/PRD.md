@@ -3,7 +3,7 @@
 ## 1. Visão Geral
 
 **Nome do Produto:** Web Swing  
-**Versão:** 0.1.0 (Etapa 1 concluída)  
+**Versão:** 0.2.0 (Etapa 2 concluída)  
 **Tipo:** Jogo single-player 3D de navegador (percurso linear)  
 **Stack:** TypeScript + Vite + three.js 0.186 (WebGL) + Vitest, sem frameworks de UI e sem assets externos  
 **Público-alvo:** Jogador de desktop com mouse e teclado; sessões de 1–3 min por nível
@@ -17,13 +17,13 @@ Entregar a **sensação de se balançar por teias** entre prédios, com controle
 - soltar no momento certo para ganhar impulso;
 - encadear balanços sem tocar a rua.
 
-A pontuação vem de **anéis coletáveis** e de um **combo de estilo** (Etapa 2). Cada nível é uma avenida com início e linha de chegada, e os 5 níveis ficam progressivamente mais difíceis.
+A pontuação vem de **anéis coletáveis** e de um **combo de estilo**; o tempo nunca vira pontos. Cada nível é uma avenida com início e linha de chegada, e os 5 níveis ficam progressivamente mais difíceis.
 
 ---
 
 ## 3. Funcionalidades (Features)
 
-### 3.1 Implementado (Etapas 0 e 1)
+### 3.1 Implementado — Etapas 0 e 1 (movimento e teia)
 
 | ID | Feature | Descrição |
 |---:|---------|-----------|
@@ -38,17 +38,28 @@ A pontuação vem de **anéis coletáveis** e de um **combo de estilo** (Etapa 2
 | FR-09 | **Boneco procedural** | Feito de primitivas (1,8 m), com 8 estados: idle, run, jump, fall, swing, flip, land e bonk. Tem crossfade entre estados. No swing, o corpo inclina para a teia e o braço aponta para ela. |
 | FR-10 | **Pausa** | Controle por *pointer lock*. O overlay "Clique para jogar / Pausado" aparece, e o clique que retoma não dispara teia. |
 
-### 3.2 Planejado
+### 3.2 Implementado — Etapa 2 (pontuação, níveis e recordes)
+
+| ID | Feature | Descrição |
+|---:|---------|-----------|
+| FR-11 | **Anéis** | 14–30 anéis por nível numa rota suave no meio da avenida. Os "de risco" ficam baixos, perto da rua, ou sobre os vãos; os dourados (400 pts) são sempre de risco. Anel vale base × (1 + bônus de velocidade: +50% a 26 m/s, +100% a 34 m/s) × multiplicador. A coleta é contínua (o corpo cruza o disco entre ticks), então nenhum anel é "pulado" em alta velocidade. |
+| FR-12 | **Combo de estilo** | Swing válido (10), soltura perfeita (50), flip (100/200) e sequência de velocidade (40 a cada 2 s acima de 26 m/s), multiplicados. O multiplicador sobe ×0,5 a cada 4 eventos, até ×5. Quebra com > 150 ms na rua, > 1,2 s num teto, 3 s sem evento, bonk ou queda. |
+| FR-13 | **Campanha** | 3 vidas. Countdown 3-2-1 antes de cada nível. Cair num vão custa uma vida e volta ao último checkpoint (anéis mantidos, combo zerado). Chegar sem a **cota de anéis** custa uma vida e reinicia o nível. 0 vidas → fim de jogo; concluir o L5 → vitória. A pontuação da campanha é a soma dos níveis concluídos. |
+| FR-14 | **Fim de nível** | Bônus: +1000 com todos os anéis e +500 sem nunca pousar na rua. Estrelas: ★ concluiu; ★★ com ≥ 75% dos anéis; ★★★ com pontuação ≥ par. O tempo aparece só como estatística. |
+| FR-15 | **Vãos e gruas** | A partir do L3, trechos sem chão (40–80 m) com gruas ancoráveis. A cidade garante sempre uma âncora a 8–45 m à frente (há teste), e nunca há vidro dos dois lados ao mesmo tempo. |
+| FR-16 | **Recordes** | Top 10 da campanha (nome de 1–12 caracteres; empate → quem fez primeiro) e melhor resultado por nível (pontos, estrelas, tempo). Salvos no navegador (`web-swing:v1:save`), com versão, migração e backup se o dado estiver corrompido. Runs com flags de debug não entram. |
+| FR-17 | **HUD** | Pontos do nível e da campanha, multiplicador com barra de progresso, anéis/cota, vidas, nome do nível e popups de cada ponto ganho ou combo perdido. |
+
+### 3.3 Planejado
 
 | Etapa | Features |
 |---|---|
-| 2 | Anéis e combo de estilo (pontuação), conclusão de níveis com cota de anéis, vidas, checkpoints, vãos sem chão (L3+), estrelas, high scores (localStorage) |
 | 3 | Tela de abertura, seleção de nível, pausa com menu, resultados, game over e vitória |
 | 4 | Áudio sintetizado, partículas, *speed lines*, tremor de câmera |
 | 5 | Configurações (sensibilidade, inverter Y, FOV, volumes, qualidade, reduzir movimento), nível de treino |
 | 6 | Performance, CI e deploy (GitHub Pages) |
 
-### 3.3 Controles
+### 3.4 Controles
 
 | Ação | Tecla |
 |---|---|
@@ -57,8 +68,9 @@ A pontuação vem de **anéis coletáveis** e de um **combo de estilo** (Etapa 2
 | Mover / direcionar o balanço | `W` `A` `S` `D` (`W` na descida = bombear; `S` = frear) |
 | Pular / impulso na teia / flip após soltar | `Espaço` |
 | Pausar | `Esc` |
+| Continuar depois do resumo do nível | `Enter` |
 
-### 3.4 Visual & UX
+### 3.5 Visual & UX
 
 | ID | Requisito |
 |---:|-----------|
@@ -67,6 +79,7 @@ A pontuação vem de **anéis coletáveis** e de um **combo de estilo** (Etapa 2
 | FR-22 | Retículo: ○ com alvo, azul quando a assistência escolheu o alvo, ✕ sem alvo, com o motivo ("fora de alcance", "baixo demais", "vidro não segura teia"). Um marcador 3D mostra o ponto real da âncora. |
 | FR-23 | HUD e overlays em DOM (acessíveis, com texto nítido), fontes do sistema. |
 | FR-24 | DPR limitado a 2 e redimensionamento via `ResizeObserver`. |
+| FR-25 | Anéis coloridos por tipo (ciano comum, rosa de risco, dourado), com pulso e "estouro" ao coletar; gruas amarelas; água escura no fundo dos vãos; faixa luminosa nos checkpoints. |
 
 ---
 
@@ -76,14 +89,14 @@ A pontuação vem de **anéis coletáveis** e de um **combo de estilo** (Etapa 2
 |---:|-----------|-----------|
 | NFR-01 | **Determinismo** | Mesma seed + mesmos inputs → mesmo estado a cada tick (`hashState`). Estado serializável; PRNG Mulberry32. |
 | NFR-02 | **Camadas** | `logic/` é puro. `render/`, `input/` e `ui/` só fazem `import type` de `logic/` (exceto `logic/math/*`). `app/` é cola pura. Tudo verificado por `architecture.test.ts`. |
-| NFR-03 | **Testabilidade** | Física, mira, gerador, câmera, relógio, flags e animação têm testes Vitest em Node, sem DOM. |
+| NFR-03 | **Testabilidade** | Física, mira, gerador, pontuação, progressão, recordes, câmera, relógio, flags e animação têm testes Vitest em Node, sem DOM. Um **replay dourado** do L1 garante que a partida gravada termina com a mesma pontuação. |
 | NFR-04 | **Performance** | Física a 60 Hz fixos com interpolação no render. Meta: 60 FPS, < 80 *draw calls*, bundle < 250 kB gzip. |
-| NFR-05 | **Build/Dev** | `npm run dev`, `npm run verify` (typecheck + build + testes) e `npm run feel` (métricas de *feel*). |
+| NFR-05 | **Build/Dev** | `npm run dev`, `npm run verify` (typecheck + build + testes), `npm run feel` (métricas de *feel*) e `npm run golden` (regrava o replay dourado). |
 | NFR-06 | **TypeScript strict** | `strict`, `noUnusedLocals`, `noImplicitReturns`, `isolatedModules`. |
 
 ---
 
-## 5. Fora do Escopo (v0.1)
+## 5. Fora do Escopo (v0.2)
 
 - Multiplayer, mobile/touch, gamepad
 - Mundo aberto, modo infinito, pontuação por tempo
@@ -92,7 +105,18 @@ A pontuação vem de **anéis coletáveis** e de um **combo de estilo** (Etapa 2
 
 ---
 
-## 6. Critérios de Aceite da Etapa 1 (Definition of Done)
+## 6. Critérios de Aceite (Definition of Done)
+
+### Etapa 2
+- [x] `npm run verify` verde (172 testes, typecheck, build)
+- [x] Anéis coletados de forma contínua, combo e multiplicador com as regras do §3.2 (testes)
+- [x] Campanha: countdown, vidas, checkpoints, cota, bônus, estrelas, fim de jogo e vitória (testes + navegador)
+- [x] Alcançabilidade garantida nos 5 níveis, inclusive sobre os vãos (teste)
+- [x] Replay dourado do L1 reproduz a pontuação exata (teste; `npm run golden` regrava)
+- [x] Recordes persistem no navegador; save corrompido não quebra o jogo (testes + navegador)
+- [ ] Roteiro manual de `VERIFICACAO.md` (Etapa 2) executado por uma pessoa
+
+### Etapa 1
 
 - [x] `npm run verify` verde (typecheck, build e testes)
 - [x] Cidade dos 5 níveis gerada de forma determinística; `?level=N` e `?seed=N` funcionam
@@ -104,7 +128,7 @@ A pontuação vem de **anéis coletáveis** e de um **combo de estilo** (Etapa 2
 
 ---
 
-## 7. Métricas de Feel (medidas com `npm run feel`, Etapa 1)
+## 7. Métricas de Feel (medidas com `npm run feel`)
 
 As metas vêm do plano aprovado. Os valores foram medidos pelo piloto automático, que usa uma estratégia simples; um jogador humano tende a ir melhor.
 
@@ -127,3 +151,17 @@ As metas vêm do plano aprovado. Os valores foram medidos pelo piloto automátic
 > - trocar o "zip" de saída por outra mecânica (ex.: impulso vertical maior sem reel).
 >
 > Os números detalhados estão no ADR-016.
+
+### Etapa 2 (piloto automático em god mode, sem mirar nos anéis)
+
+| Nível | Concluiu | Quedas no vão | Anéis | Pontos (par) |
+|---|---|---|---|---|
+| L1 | ✅ 34,6 s | — | 1/14 | 1.260 (4.000) |
+| L2 | ✅ 45,8 s | — | 0/18 | 680 (6.000) |
+| L3 | ✅ 53,5 s | 0 | 2/22 | 1.055 (8.500) |
+| L4 | ✅ 65,6 s | 0 | 0/26 | 1.285 (11.000) |
+| L5 | ✅ 86,2 s | 2 | 0/30 | 530 (14.000) |
+
+> O piloto não mira nos anéis, então os pontos dele não servem para calibrar o **par** (3ª estrela).
+> Medindo onde ele cruza cada anel, as rotas passam a 3–10 m do centro, na faixa de altura das trajetórias (5–30 m): os anéis são pegáveis com mira, mas **o par é provisório** e deve ser calibrado com partidas reais (ADR-019).
+

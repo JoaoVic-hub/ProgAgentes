@@ -18,6 +18,11 @@
 14. [ADR-014: Ferramentas de dev só em desenvolvimento](#adr-014-ferramentas-de-dev-só-em-desenvolvimento)
 15. [ADR-015: Anti-spam de teia (swing mínimo)](#adr-015-anti-spam-de-teia-swing-mínimo)
 16. [ADR-016: Tuning de feel medido (histórico)](#adr-016-tuning-de-feel-medido-histórico)
+17. [ADR-017: Pontuação — limiares de velocidade adaptados](#adr-017-pontuação--limiares-de-velocidade-adaptados)
+18. [ADR-018: Máquina de fases da campanha](#adr-018-máquina-de-fases-da-campanha)
+19. [ADR-019: Vãos, gruas e alcançabilidade garantida](#adr-019-vãos-gruas-e-alcançabilidade-garantida)
+20. [ADR-020: Recordes — parse robusto, versão e backup](#adr-020-recordes--parse-robusto-versão-e-backup)
+21. [ADR-021: Replay dourado com configHash](#adr-021-replay-dourado-com-confighash)
 
 ---
 
@@ -352,6 +357,114 @@ Variantes descartadas na rodada 4, com números medidos:
 ### Consequências
 - ✅ Cruzeiro e toques na rua dentro das metas. Os 5 níveis são concluídos pelo piloto.
 - ✅ O 1º swing a partir do repouso fica em 28–36 m/s (meta original: 18–22). Decisão (2026-09-24): **aceito** — o "zip" forte de saída é o preço de não raspar a rua (PRD §7).
+
+---
+
+## ADR-017: Pontuação — limiares de velocidade adaptados
+
+**Status:** Aceito
+**Data:** 2026-09-24
+
+### Contexto
+O plano (§2) dava +50% no anel a partir de 28 m/s e +100% a partir de 40 m/s, e a sequência de velocidade a 28 m/s. Depois do retuning da Etapa 1 (ADR-016), o teto no balanço é 36 m/s e o cruzeiro fica em 26–33 m/s. Com 40 m/s, o bônus cheio só existiria em queda livre.
+
+### Decisão
+- Os limiares viraram configuração (`scoring` em `logic/config.ts`): **26 m/s** (+50%), **34 m/s** (+100%) e sequência de velocidade a **26 m/s**.
+- O resto segue o plano: anel 100/400 pts, swing 10, soltura perfeita 50, flip 100/200, sequência 40; multiplicador +0,5 a cada 4 eventos, até ×5; quebras em > 150 ms na rua, > 1,2 s num teto, 3 s sem evento, bonk ou queda.
+- O anel renova o timer do combo mas não soma no chain. Swing só conta com teia presa ≥ 0,35 s (o mesmo mínimo do anti-spam, ADR-015).
+
+### Consequências
+- ✅ O bônus de velocidade existe no jogo real (cruzeiro → +50%; pico do arco → +100%).
+- ⚠️ Mudou o tuning de velocidade? Revise estes limiares junto.
+
+---
+
+## ADR-018: Máquina de fases da campanha
+
+**Status:** Aceito
+**Data:** 2026-09-24
+
+### Decisão
+- `GamePhase`: countdown → playing ⇄ respawning; playing → level_complete | level_failed | game_over; e victory. Fonte da verdade única, como no ADR-007 do snake-duel.
+- `engine.step` só despacha pela fase. `logic/progression.ts` faz o resto: countdown, queda, anéis, combo, checkpoints e chegada.
+- As fases **terminais não avançam em `step()`**. Só a cola sai delas: Enter → `advanceAfterLevel` / `restartLevel`; fim de run → placar → `createRun`.
+- `logic/player/simulate.ts` é o tick físico da Etapa 1, sem mudança de comportamento: os 119 testes anteriores passaram sem alteração, exceto 1 (as gruas ancoram).
+- Atalhos de debug (N/K/R) e `?god=1` são funções puras e marcam o run como não ranqueado.
+
+### Consequências
+- ✅ Toda a campanha é testável em Node (13 testes de progressão) e reproduzível (replay dourado).
+- ⚠️ A UI de transição da Etapa 2 é mínima (faixa central + Enter). As telas completas vêm na Etapa 3.
+
+---
+
+## ADR-019: Vãos, gruas e alcançabilidade garantida
+
+**Status:** Aceito
+**Data:** 2026-09-24
+
+### Contexto
+O plano pede vãos sem chão a partir do L3, com gruas ancoráveis, e um teste de **alcançabilidade**: a cada 5 m, do meio da avenida a 15 m de altura, precisa existir âncora à frente entre 8 e 45 m.
+
+### Decisão
+- **Vãos:** espaçados no miolo do nível. A rua vira segmentos; nenhum prédio invade o vão; as paredes invisíveis descem abaixo de `killY`.
+- **Gruas:** torres de 3 × 3 m logo fora do corredor da avenida (o corredor continua livre), alternando os lados, com no máximo ~28 m entre elas.
+- **Vidro frente a frente proibido:** o teste de alcançabilidade achou **60 m sem nenhuma âncora no L4**, com vidro dos dois lados. A regra "nunca dois vidros seguidos" só valia no mesmo lado. Agora um prédio não pode ser de vidro se o prédio em frente também for.
+- **Checkpoints:** igualmente espaçados; se um cai num vão, vai para 15 m antes dele.
+- **Anéis:** rota suave (senoides de fase sorteada) com folga ≥ raio + 1,5 m das fachadas e ≥ raio + 1 m da rua.
+- A ordem de consumo do PRNG mantém a cidade do L1 idêntica à da Etapa 1. O L2 mudou onde a regra do vidro se aplicou.
+
+### Consequências
+- ✅ Os 5 níveis passam no teste de alcançabilidade, inclusive sobre os vãos.
+- ⚠️ **O par (3ª estrela) é provisório.** O piloto automático não mira anéis, então não serve para calibrá-lo. As rotas passam a 3–10 m dos centros e na faixa de altura das trajetórias, portanto são pegáveis com mira. Calibrar com partidas reais.
+
+---
+
+## ADR-020: Recordes — parse robusto, versão e backup
+
+**Status:** Aceito
+**Data:** 2026-09-24
+
+### Decisão
+- `logic/highscores.ts` (puro):
+  - top 10;
+  - empate → data mais antiga;
+  - nome saneado (1–12 caracteres, sem controle);
+  - melhor por nível que só melhora.
+- `logic/save-data.ts`:
+  - `parseSaveData` **nunca lança**; JSON corrompido ou versão futura → padrão, com o status;
+  - migração do formato legado (v0);
+  - números não finitos descartados.
+- `storage/store.ts`:
+  - localStorage com queda para memória (aba anônima, storage bloqueado);
+  - só strings, sem regras.
+- `app/save.ts` (cola pura, recebe o store por parâmetro):
+  - chave `web-swing:v1:save`;
+  - o conteúdo ruim vai para `…save.bak` antes de ser substituído;
+  - runs não ranqueados não entram.
+- A data vem do main (`Date.now()`), nunca da lógica.
+- O melhor por nível é salvo a cada nível concluído (não depende de terminar a campanha).
+
+### Consequências
+- ✅ Save corrompido não quebra o jogo (verificado no navegador), e nada se perde em silêncio.
+
+---
+
+## ADR-021: Replay dourado com configHash
+
+**Status:** Aceito
+**Data:** 2026-09-24
+
+### Decisão
+- `tools/golden.gen.ts` (`npm run golden`): o piloto automático joga o L1 desde o countdown até concluir. A gravação vai para `src/logic/__fixtures__/replay-l1.json` com:
+  - os inputs comprimidos em RLE (2.076 ticks → 32 trechos, 3,9 kB);
+  - o `configHash`;
+  - o resultado esperado (pontos, anéis, estrelas, hash do estado).
+- `src/logic/golden.test.ts` reproduz e exige o mesmo estado final. Se a config mudou, falha com a mensagem para rodar `npm run golden`.
+- As gravações do jogo (`?record=1` + F9) usam o mesmo formato (v2) e são reproduzíveis por `window.__webSwing.loadReplay`. Os atalhos N/K/R e o tuning pelo F2 marcam a gravação como `reproducible: false`.
+
+### Consequências
+- ✅ Qualquer mudança acidental de física, pontuação, progressão ou determinismo quebra o teste. Verificado: mudar `pump` em 0,5% já quebra.
+- ⚠️ Toda mudança intencional de tuning exige regravar (é o objetivo).
 
 ---
 

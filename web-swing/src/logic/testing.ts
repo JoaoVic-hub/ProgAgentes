@@ -4,7 +4,7 @@
  * importado por arquivos *.test.ts (fica fora do bundle).
  */
 
-import type { GameConfig, GameState, InputFrame, Level, Player, Rope, SolidKind } from './types';
+import type { Checkpoint, GameConfig, GameState, InputFrame, Level, Player, Ring, Rope, SolidKind, ZRange } from './types';
 import type { Vec3 } from './math/vec3';
 import { buildBroadphase } from './level/broadphase';
 import { LEVEL_SPECS } from './level/specs';
@@ -19,26 +19,45 @@ export interface TestBox {
   readonly side?: -1 | 0 | 1;
 }
 
-/** Nível com rua enorme (y ≤ 0) + as caixas dadas. */
-export function makeTestLevel(boxes: readonly TestBox[], start: Vec3 = { x: 0, y: 0, z: 0 }): Level {
-  const drafts: TestBox[] = [
-    { min: { x: -500, y: -1, z: -500 }, max: { x: 500, y: 0, z: 2000 }, kind: 'street', side: 0 },
-    ...boxes,
-  ];
+export interface TestLevelOptions {
+  readonly start?: Vec3;
+  readonly rings?: readonly Ring[];
+  readonly checkpoints?: readonly Checkpoint[];
+  readonly ringQuota?: number;
+  readonly finishZ?: number;
+  /** Trechos de Z sem rua (vãos). */
+  readonly voids?: readonly ZRange[];
+}
+
+/** Nível com rua enorme (y ≤ 0, com buracos nos vãos) + as caixas dadas. */
+export function makeTestLevel(boxes: readonly TestBox[], opts: TestLevelOptions = {}): Level {
+  const voids = opts.voids ?? [];
+  const streets: TestBox[] = [];
+  let z0 = -500;
+  for (const v of voids) {
+    streets.push({ min: { x: -500, y: -1, z: z0 }, max: { x: 500, y: 0, z: v.start }, kind: 'street', side: 0 });
+    z0 = v.end;
+  }
+  streets.push({ min: { x: -500, y: -1, z: z0 }, max: { x: 500, y: 0, z: 2000 }, kind: 'street', side: 0 });
+  const drafts: TestBox[] = [...streets, ...boxes];
   const sorted = [...drafts].sort((a, b) => a.min.z - b.min.z || a.min.x - b.min.x);
   const solids = sorted.map((b, id) => {
     const kind = b.kind ?? 'building';
-    return { id, box: { min: b.min, max: b.max }, kind, anchorable: kind === 'building', side: b.side ?? 0 };
+    return { id, box: { min: b.min, max: b.max }, kind, anchorable: kind === 'building' || kind === 'crane', side: b.side ?? 0 };
   });
   return {
     spec: LEVEL_SPECS[0],
     seed: 0,
     solids,
     broadphase: buildBroadphase(solids),
-    start,
-    finishZ: 1000,
+    start: opts.start ?? { x: 0, y: 0, z: 0 },
+    finishZ: opts.finishZ ?? 1000,
     killY: -25,
     halfWorldWidth: 500,
+    voids,
+    rings: opts.rings ?? [],
+    checkpoints: opts.checkpoints ?? [],
+    ringQuota: opts.ringQuota ?? 0,
   };
 }
 

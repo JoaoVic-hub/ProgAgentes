@@ -20,9 +20,10 @@ export interface Aabb {
  * street   — laje da rua (chão; não ancora)
  * building — prédio comum (ancora)
  * glass    — prédio de vidro (colide, bloqueia a mira, NÃO ancora)
+ * crane    — torre de guindaste nos vãos sem chão (ancora; o apoio sobre o vão)
  * bounds   — parede invisível nos limites do nível (colide, não bloqueia a mira)
  */
-export type SolidKind = 'street' | 'building' | 'glass' | 'bounds';
+export type SolidKind = 'street' | 'building' | 'glass' | 'crane' | 'bounds';
 
 export interface Solid {
   readonly id: number;
@@ -34,6 +35,32 @@ export interface Solid {
 }
 
 export type Range = readonly [min: number, max: number];
+
+/** Trecho da avenida ao longo de Z (ex.: um vão sem chão). */
+export interface ZRange {
+  readonly start: number;
+  readonly end: number;
+}
+
+/** Anel coletável: disco que o jogador precisa atravessar. */
+export interface Ring {
+  readonly id: number;
+  readonly center: Vec3;
+  /** Normal unitária do disco (sentido de passagem). */
+  readonly normal: Vec3;
+  readonly radius: number;
+  readonly gold: boolean;
+  /** Em rota arriscada: baixo, perto da rua, ou sobre um vão. */
+  readonly risky: boolean;
+}
+
+export interface Checkpoint {
+  /** 1..n (0 é a largada). */
+  readonly index: number;
+  readonly z: number;
+  /** Onde o jogador reaparece (parado, na rua). */
+  readonly spawn: Vec3;
+}
 
 /** Parâmetros declarativos de um nível; o gerador puro produz o Level. */
 export interface LevelSpec {
@@ -54,6 +81,20 @@ export interface LevelSpec {
   readonly setback: Range;
   /** Probabilidade de um prédio ser de vidro (nunca dois seguidos no mesmo lado). */
   readonly glassRatio: number;
+  /** Vãos sem chão (com gruas para ancorar). */
+  readonly voids: { readonly count: number; readonly length: Range };
+  readonly rings: {
+    readonly count: number;
+    readonly gold: number;
+    readonly radius: number;
+    /** Fração dos anéis em rota arriscada (os dourados sempre são). */
+    readonly riskyRatio: number;
+  };
+  /** Fração mínima de anéis para concluir o nível (cota). */
+  readonly minRingRatio: number;
+  readonly checkpoints: number;
+  /** Pontuação do nível para a 3ª estrela. */
+  readonly parScore: number;
 }
 
 /** Índice espacial em faixas de Z: cells[i] lista ids de sólidos que tocam a faixa i. */
@@ -77,6 +118,13 @@ export interface Level {
   readonly killY: number;
   /** Limites do mundo jogável em X (fachadas externas + margem). */
   readonly halfWorldWidth: number;
+  /** Vãos sem chão, em ordem de Z. */
+  readonly voids: readonly ZRange[];
+  readonly rings: readonly Ring[];
+  /** Em ordem de Z (index 1..n). */
+  readonly checkpoints: readonly Checkpoint[];
+  /** Anéis mínimos para concluir o nível. */
+  readonly ringQuota: number;
 }
 
 // ---------------------------------------------------------------- configuração
@@ -180,12 +228,51 @@ export interface CameraRigConfig {
   readonly pitchMaxDeg: number;
 }
 
+export interface ScoringConfig {
+  readonly ringBase: number;
+  readonly goldRingBase: number;
+  /** Folga além do raio do anel para contar a passagem. */
+  readonly ringSlack: number;
+  /** Velocidade (m/s) para +50% e +100% nos pontos do anel. */
+  readonly speedBonusHalf: number;
+  readonly speedBonusFull: number;
+  /** A cada chainPerStep eventos de estilo o multiplicador sobe multiplierStep, até maxMultiplier. */
+  readonly chainPerStep: number;
+  readonly multiplierStep: number;
+  readonly maxMultiplier: number;
+  readonly swingPoints: number;
+  readonly swingMinSpeed: number;
+  readonly perfectPoints: number;
+  readonly flipPoints: number;
+  readonly flipAfterPerfectPoints: number;
+  readonly speedStreakSpeed: number;
+  readonly speedStreakTime: number;
+  readonly speedStreakPoints: number;
+  /** Tempo sem evento de estilo/anel até o combo quebrar. */
+  readonly comboTimeout: number;
+  /** Tempo apoiado na rua / num teto até o combo quebrar. */
+  readonly streetGrace: number;
+  readonly roofGrace: number;
+  readonly allRingsBonus: number;
+  readonly noStreetBonus: number;
+  /** Fração de anéis para a 2ª estrela. */
+  readonly twoStarRingRatio: number;
+}
+
+export interface ProgressionConfig {
+  readonly lives: number;
+  readonly countdownTime: number;
+  readonly respawnTime: number;
+}
+
 export interface GameConfig {
   readonly tickHz: number;
   readonly physics: PhysicsConfig;
   readonly web: WebConfig;
   readonly aim: AimConfig;
   readonly rig: CameraRigConfig;
+  readonly scoring: ScoringConfig;
+  readonly progression: ProgressionConfig;
 }
 
 // ---------------------------------------------------------------- input
@@ -268,6 +355,9 @@ export interface AimResult {
 // ---------------------------------------------------------------- eventos
 
 export type ReleaseReason = 'manual' | 'above' | 'wall';
+export type StyleKind = 'swing' | 'perfect' | 'flip' | 'speed';
+export type ComboBreakReason = 'street' | 'roof' | 'timeout' | 'bonk' | 'respawn';
+export type LifeLossReason = 'fall' | 'quota' | 'debug';
 
 /** Eventos efêmeros do tick: HUD, áudio, animação e (Etapa 2) pontuação consomem. */
 export type GameEvent =
@@ -288,13 +378,75 @@ export type GameEvent =
     }
   | { readonly type: 'web_impulse' }
   | { readonly type: 'flip'; readonly afterPerfect: boolean }
-  | { readonly type: 'bonk'; readonly speed: number };
+  | { readonly type: 'bonk'; readonly speed: number }
+  // pontuação (Etapa 2)
+  | { readonly type: 'ring_collected'; readonly ringId: number; readonly gold: boolean; readonly points: number; readonly speedBonus: number }
+  | { readonly type: 'style'; readonly kind: StyleKind; readonly points: number; readonly multiplier: number }
+  | { readonly type: 'combo_lost'; readonly reason: ComboBreakReason; readonly chain: number }
+  // progressão (Etapa 2)
+  | { readonly type: 'go' }
+  | { readonly type: 'checkpoint'; readonly index: number }
+  | { readonly type: 'life_lost'; readonly reason: LifeLossReason; readonly livesLeft: number }
+  | { readonly type: 'respawned'; readonly checkpoint: number }
+  | { readonly type: 'level_complete'; readonly result: LevelResult }
+  | { readonly type: 'level_failed'; readonly rings: number; readonly quota: number }
+  | { readonly type: 'game_over' }
+  | { readonly type: 'victory' };
 
 // ---------------------------------------------------------------- estado
 
 export interface SessionStats {
   readonly webShots: number;
   readonly webMisses: number;
+}
+
+/**
+ * countdown      — 3-2-1 antes de jogar (só o olhar é livre)
+ * playing        — jogo rolando
+ * respawning     — caiu num vão; reaparece no último checkpoint
+ * level_complete — cruzou a chegada com a cota de anéis (espera o "continuar")
+ * level_failed   — cruzou sem a cota: perdeu uma vida (espera o "tentar de novo")
+ * game_over      — acabaram as vidas
+ * victory        — concluiu o último nível
+ * As 4 últimas são terminais para step(): só a cola (main) sai delas.
+ */
+export type GamePhase = 'countdown' | 'playing' | 'respawning' | 'level_complete' | 'level_failed' | 'game_over' | 'victory';
+
+export interface StyleState {
+  /** Eventos de estilo encadeados sem quebrar o combo. */
+  readonly chain: number;
+  readonly comboTimerTicks: number;
+  readonly speedStreakTicks: number;
+  readonly streetTicks: number;
+  readonly roofTicks: number;
+  readonly bestMultiplier: number;
+}
+
+/** Acumuladores do nível em andamento. */
+export interface LevelProgress {
+  readonly ticks: number;
+  readonly ringPoints: number;
+  readonly stylePoints: number;
+  /** Pousou na rua em algum momento (perde o bônus "sem tocar a rua"). */
+  readonly touchedStreet: boolean;
+  readonly falls: number;
+}
+
+export interface LevelResult {
+  readonly levelIndex: number;
+  readonly levelName: string;
+  /** Pontuação final do nível, com bônus. */
+  readonly score: number;
+  readonly ringPoints: number;
+  readonly stylePoints: number;
+  readonly allRingsBonus: number;
+  readonly noStreetBonus: number;
+  readonly rings: number;
+  readonly ringsTotal: number;
+  readonly stars: 1 | 2 | 3;
+  /** Só estatística (o tempo não pontua). */
+  readonly timeTicks: number;
+  readonly bestMultiplier: number;
 }
 
 export interface GameState {
@@ -307,4 +459,24 @@ export interface GameState {
   /** Só os eventos deste tick. */
   readonly events: readonly GameEvent[];
   readonly stats: SessionStats;
+  readonly phase: GamePhase;
+  /** Ticks restantes da fase (countdown, respawning). */
+  readonly phaseTicks: number;
+  readonly ringsCollected: readonly boolean[];
+  readonly style: StyleState;
+  readonly progress: LevelProgress;
+  /** Pontos do nível em andamento (sem os bônus de fim de nível). */
+  readonly levelScore: number;
+  /** Soma dos níveis concluídos na campanha. */
+  readonly runScore: number;
+  readonly lives: number;
+  /** Último checkpoint alcançado (0 = largada). */
+  readonly checkpointIndex: number;
+  /** false quando alguma flag de debug mudou o jogo: não entra nos recordes. */
+  readonly ranked: boolean;
+  /** ?god=1: não perde vidas nem precisa da cota. */
+  readonly god: boolean;
+  /** ?seed=N vale só para o nível inicial da campanha. */
+  readonly seedOverride: number | null;
+  readonly results: readonly LevelResult[];
 }

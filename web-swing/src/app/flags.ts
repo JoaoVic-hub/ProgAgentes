@@ -23,6 +23,10 @@ export interface DebugFlags {
   readonly hz: 60 | 120;
   /** 'pose' = visualizador de poses do boneco em vez do jogo. */
   readonly view: 'game' | 'pose';
+  /** Não perde vidas nem precisa da cota de anéis. */
+  readonly god: boolean;
+  /** Apaga os recordes salvos ao abrir. */
+  readonly resetScores: boolean;
 }
 
 export const DEFAULT_FLAGS: DebugFlags = {
@@ -34,6 +38,8 @@ export const DEFAULT_FLAGS: DebugFlags = {
   record: false,
   hz: 60,
   view: 'game',
+  god: false,
+  resetScores: false,
 } as const;
 
 function parseBool(params: URLSearchParams, key: string): boolean {
@@ -73,10 +79,19 @@ export function parseFlags(search: string, allowDebug: boolean): DebugFlags {
     record: parseBool(params, 'record'),
     hz: params.get('hz') === '120' ? 120 : 60,
     view: params.get('view') === 'pose' ? 'pose' : 'game',
+    god: parseBool(params, 'god'),
+    resetScores: parseBool(params, 'resetScores'),
   };
 }
 
-/** Flags que alteram o jogo (o run deixa de valer para recordes na Etapa 2). */
+/** Flags que alteram o jogo: com qualquer uma delas o run não entra nos recordes. */
 export function flagsAffectGameplay(flags: DebugFlags): boolean {
-  return flags.level !== null || flags.seed !== null || flags.slowmo !== 1 || flags.hz !== 60 || flags.cam === 'free';
+  return (
+    flags.level !== null ||
+    flags.seed !== null ||
+    flags.slowmo !== 1 ||
+    flags.hz !== 60 ||
+    flags.cam === 'free' ||
+    flags.god
+  );
 }
