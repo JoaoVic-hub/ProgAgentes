@@ -1,7 +1,7 @@
 /**
  * Retículo no centro da tela: ○ = há alvo para a teia, ✕ = sem alvo (com o
  * motivo em texto pequeno: fora de alcance, baixo demais, vidro...).
- * Some enquanto a teia está presa.
+ * Some enquanto a teia está presa. Brilha dourado na soltura perfeita (Etapa 4).
  */
 
 import type { AimFailReason, AimResult } from '../logic/types';
@@ -18,6 +18,8 @@ const REASONS: Record<Exclude<AimFailReason, null>, string> = {
 export interface Crosshair {
   update(aim: AimResult, swinging: boolean): void;
   setVisible(visible: boolean): void;
+  /** Brilho dourado rápido (soltura perfeita). */
+  pulse(): void;
   dispose(): void;
 }
 
@@ -42,6 +44,11 @@ export function createCrosshair(root: HTMLElement): Crosshair {
     },
     setVisible(visible) {
       el.style.display = visible ? '' : 'none';
+    },
+    pulse() {
+      el.classList.remove('pulse');
+      void el.offsetWidth; // reinicia a animação CSS
+      el.classList.add('pulse');
     },
     dispose() {
       el.remove();

@@ -28,17 +28,19 @@
 src/
 ├── main.ts, pose-viewer.ts       # cola (únicos que conhecem todas as camadas)
 ├── architecture.test.ts           # regras de import/pureza
-├── app/      clock, flags, frame, camera-follow, save, threat-radar, screens, demo   # cola PURA e testável
+├── app/      clock, flags, frame, camera-follow, save, threat-radar, screens, demo, juice   # cola PURA e testável
 ├── logic/    engine (despacho por fase), progression, momentum, threats, highscores,
 │             save-data, aim, config, types, camera-rig, replay, testing, __fixtures__/
 │   ├── math/    vec3, geom                        # pode ser importado como valor pelo render
 │   ├── level/   specs, generator, broadphase
 │   └── player/  simulate (tick físico), physics, collision, web
+├── audio/    mapping (puro: evento → cue), engine (WebAudio)
 ├── input/    mouse-keyboard                        # pointer lock → InputFrame
 ├── storage/  store                                 # localStorage → strings (sem regras)
 ├── render/   scene, city, threats, web-line, camera, debug-draw, palette
+│   ├── fx/        particle-pool (puro), particles (three)
 │   └── character/ pose, animator, orientation (puros), rig (three)
-└── ui/       menus, crosshair, hud, banner, threat-indicator, format, debug-panel, tuning-gui
+└── ui/       menus, crosshair, hud, banner, threat-indicator, speed-lines, format, debug-panel, tuning-gui
 tools/        autopilot.ts (estratégia), autopilot.feel.ts (npm run feel), golden.gen.ts (npm run golden)
 ```
 
@@ -107,6 +109,9 @@ Uma regra nova entra no passo certo e ganha teste.
 - Cores e parâmetros visuais ficam em `render/palette.ts`, nunca fixos no meio do código.
 - Shader injetado (`onBeforeCompile`) usa `customProgramCacheKey`. Revise os nomes de *chunks* ao atualizar o three.
 - Ordem de desenho: cena (cidade, boneco, teia) → marcador 3D (`depthTest: false`) → debug (`renderOrder` alto).
+- **Juice é apresentação:** som, partículas, tremor e speed lines saem dos eventos do tick. Um efeito novo entra no mapeamento puro (`audio/mapping.ts`, `app/juice.ts`), com teste; nunca como regra na lógica.
+- **Áudio:** nada de arquivos; o `AudioContext` só nasce num gesto do usuário (`audio.unlock()`). Ganhos sempre em [0, 1]; ameaças atenuam com a distância.
+- Respeite `prefers-reduced-motion` em qualquer efeito de movimento de câmera ou de tela.
 
 ---
 
@@ -165,5 +170,6 @@ Uma regra nova entra no passo certo e ganha teste.
 | F1 | Wireframe das AABBs, lançadores com o círculo de alcance, checkpoints, raio de mira, âncora virtual → contato, vetor velocidade |
 | F2 | lil-gui de tuning ao vivo |
 | F3 / `.` | Congela a simulação / avança um tick |
-| `window.__webSwing` | `getState()`, `getScreen()`, `hashState()`, `loadReplay(json)` no console |
+| M | Som liga/desliga (salvo em `web-swing:v1:audio`) |
+| `window.__webSwing` | `getState()`, `getScreen()`, `audio()` (contexto e últimos sons), `hashState()`, `loadReplay(json)` no console |
 | Painel `?debug=1` | Também mostra fase, tempo, ranqueado, impulso (valor, máximo, combo, ociosidade), mísseis vivos, estado de cada lançador (i/a/f/c), invulnerabilidade, acertos, quedas e os últimos 8 eventos |

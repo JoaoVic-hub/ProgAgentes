@@ -29,6 +29,8 @@ export interface Hud {
   update(d: HudData): void;
   /** Popups e flashes para os eventos do frame. */
   popups(events: readonly GameEvent[], tickHz: number): void;
+  /** Aviso curto avulso (ex.: "Som desligado"). */
+  notice(text: string): void;
   setVisible(visible: boolean): void;
   dispose(): void;
 }
@@ -182,6 +184,9 @@ export function createHud(root: HTMLElement): Hud {
           popup(`Checkpoint ${e.index} · ${formatTime((e.timeTicks * 1000) / tickHz)}`, 'info');
         }
       }
+    },
+    notice(text) {
+      popup(text, 'info');
     },
     setVisible(visible) {
       el.style.display = visible ? '' : 'none';

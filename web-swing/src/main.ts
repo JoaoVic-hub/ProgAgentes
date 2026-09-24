@@ -1,5 +1,5 @@
 /**
- * main.ts — cola do Web Swing (Etapa 3: telas de abertura, pausa e resultados).
+ * main.ts — cola do Web Swing (Etapa 4: áudio, partículas e "juice").
  *
  * Único arquivo (junto com pose-viewer.ts) que conhece todas as camadas:
  * liga input → step() → render/UI e aplica o fluxo de telas. A simulação
@@ -10,6 +10,11 @@
  * (criar/reiniciar/avançar o run, pedir/soltar o pointer lock); aqui só se
  * aplicam os efeitos. Nos menus livres (título, seleção, recordes, como
  * jogar), o fundo é a demonstração: o replay dourado do L1 (app/demo.ts).
+ *
+ * Juice (Etapa 4): os eventos do tick viram sons (audio/mapping.ts → engine),
+ * partículas (render/fx), trauma de câmera e roll (app/juice.ts); a
+ * velocidade vira vento e speed lines. A demonstração não faz som nem treme.
+ * `prefers-reduced-motion` desliga tremor, roll e speed lines. M = mudo.
  *
  * Ferramentas de dev (só em `npm run dev`):
  *   ?debug=1  painel + FPS     ?level=N (pula o título)  ?seed=N  ?cam=free  câmera livre
@@ -29,6 +34,8 @@ import type { CameraFollowState } from './app/camera-follow';
 import { interpolateMissiles, interpolatePlayer } from './app/frame';
 import { loadSave, recordHighscore, recordLevelBests, resetSave, runQualifies, runTimeMs, writeSave } from './app/save';
 import { threatRadar } from './app/threat-radar';
+import { addTrauma, lateralSpeed, NO_SHAKE, shakeOffsets, speedLinesIntensity, stepRoll, stepShake, traumaFor } from './app/juice';
+import type { ShakeState } from './app/juice';
 import { INITIAL_SCREEN, isMenuScreen, screenReducer } from './app/screens';
 import type { Screen, ScreenAction, ScreenEffect } from './app/screens';
 import { nextDemoInput, startDemo } from './app/demo';
@@ -51,6 +58,9 @@ import { createThreatsView } from './render/threats';
 import type { ThreatsView } from './render/threats';
 import { createWebLine } from './render/web-line';
 import { applyCameraPose } from './render/camera';
+import { createParticlesView } from './render/fx/particles';
+import { createAudioEngine } from './audio/engine';
+import { countdownValue, cuesFor, proximityInterval } from './audio/mapping';
 import { createCharacterRig } from './render/character/rig';
 import { createAnimator, updateAnimator } from './render/character/animator';
 import type { DebugDraw, DebugSegment } from './render/debug-draw';
@@ -62,6 +72,7 @@ import { createBanner } from './ui/banner';
 import { createMenus } from './ui/menus';
 import type { LevelCard, MenuData, MenuIntent } from './ui/menus';
 import { createThreatIndicator } from './ui/threat-indicator';
+import { createSpeedLines } from './ui/speed-lines';
 import type { DebugPanel } from './ui/debug-panel';
 import type { TuningGui } from './ui/tuning-gui';
 
@@ -129,10 +140,16 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
   const rig = createCharacterRig();
   const webLine = createWebLine();
   // no voo livre (verificação da 1A) só a cidade é desenhada: as draw calls medidas são as dela
+  const particles = createParticlesView();
   if (flags.cam !== 'free') {
     view.scene.add(rig.root);
     view.scene.add(webLine.group);
+    view.scene.add(particles.group);
   }
+  // juice visual (Etapa 4): trauma → tremor, roll pela velocidade lateral
+  const reducedMotion = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let shake: ShakeState = NO_SHAKE;
+  let roll = 0;
   let animState = createAnimator(0);
   const handPos = new Vector3();
 
@@ -159,6 +176,10 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     animState = createAnimator(0);
     if (!demo) controller.setLook(state.player.yaw, 0.15);
     threatsView?.reset();
+    particles.clear();
+    shake = NO_SHAKE;
+    roll = 0;
+    lastCountdown = null;
     resetCamera();
     clock = createClock();
   }
@@ -188,11 +209,28 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
   // ------------------------------------------------------------ input e UI
   const controller = createMouseKeyboardController(canvas);
   controller.setLook(0, 0.15);
+  const speedLines = createSpeedLines(uiRoot); // primeiro: fica embaixo do HUD e dos menus
   const hud = createHud(uiRoot);
   const banner = createBanner(uiRoot);
   const crosshair = createCrosshair(uiRoot);
   const threatIndicator = createThreatIndicator(uiRoot);
   const menus = createMenus(uiRoot);
+  const AUDIO_KEY = 'web-swing:v1:audio';
+  const audio = createAudioEngine(store.get(AUDIO_KEY) === 'muted');
+  /** Último número do countdown já anunciado (bipe a cada troca). */
+  let lastCountdown: number | null = null;
+  /** Tempo até o próximo bipe de proximidade de míssil. */
+  let proximityTimer = 0;
+  let maxMissileUrgency = 0;
+  window.addEventListener('keydown', (e) => {
+    const target = e.target as HTMLElement | null;
+    if (e.code !== 'KeyM' || e.repeat || (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'))) return;
+    audio.unlock();
+    const muted = !audio.isMuted();
+    audio.setMuted(muted);
+    store.set(AUDIO_KEY, muted ? 'muted' : 'on');
+    hud.notice(muted ? 'Som desligado (M)' : 'Som ligado (M)');
+  });
   const levelLabel = () => `Nível ${state.level.spec.index} — ${state.level.spec.name}`;
   const msOf = (ticks: number) => ticksToMs(ticks, config.tickHz);
   const levelBestMs = (index: number): number | null => save.bestByLevel[String(index)]?.bestTimeMs ?? null;
@@ -261,6 +299,7 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     screen = t.screen;
     for (const e of t.effects) applyEffect(e);
     if (!isMenuScreen(before) && isMenuScreen(screen)) beginDemo();
+    if (screen.kind === 'victory' && before.kind !== 'victory') audio.play({ kind: 'victory' });
     if (screen.kind !== 'game' || !screen.paused) menuHint = '';
     refreshMenus();
   }
@@ -341,7 +380,12 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
         dispatch(intent);
     }
   }
-  menus.onIntent(onIntent);
+  menus.onIntent((intent) => {
+    // todo clique/tecla de menu é um gesto do usuário: é aqui que o áudio pode nascer
+    audio.unlock();
+    audio.play({ kind: 'ui' });
+    onIntent(intent);
+  });
 
   async function requestLock() {
     // o Chrome recusa o lock por ~1 s depois de um Esc: avisa em vez de parecer quebrado
@@ -354,6 +398,7 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
   controller.onLockChange((locked) => {
     if (locked) {
       lastFrameTime = null; // retoma sem "pular" o tempo parado
+      audio.unlock();
       dispatch({ type: 'lock_acquired' });
     } else {
       dispatch({ type: 'lock_lost' });
@@ -372,6 +417,7 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     (window as unknown as { __webSwing: unknown }).__webSwing = {
       getState: () => state,
       getScreen: () => screen,
+      audio: () => ({ muted: audio.isMuted(), ...audio.stats() }),
       hashState: () => hashState(state),
       /** Reexecuta uma gravação (JSON do F9) e devolve o hash final e se a config bate. */
       loadReplay: (rec: InputRecording) => {
@@ -387,8 +433,11 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     /** Atalhos que mexem no estado por fora dos inputs: o run sai do ranking e a gravação deixa de reproduzir. */
     const cheat = (fn: (s: GameState) => GameState) => {
       if (screen.kind !== 'game') return; // nunca na demonstração nem nos menus
+      const before = state.events.length;
       state = fn(state);
       recordingReproducible = false;
+      // eventos criados pelo atalho (ex.: K = acerto) também têm som, partículas e tremor
+      handleEvents(state.events.slice(before), performance.now());
     };
     window.addEventListener('keydown', (e) => {
       if (e.repeat) return;
@@ -511,6 +560,7 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     // animação anda no tempo da SIMULAÇÃO (parada na pausa/F3, lenta no slowmo); a câmera usa o tempo real
     const simDtSec = running && !frozen ? (realDtMs * flags.slowmo) / 1000 : ticksThisFrame / config.tickHz;
     timeSec += simDtSec;
+    updateJuice(realDtMs / 1000, simDtSec, inGame);
     renderFrame(realDtMs / 1000, simDtSec, events);
     updateUi(now);
     if (debugPanel) {
@@ -544,6 +594,68 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
       }
     }
     if (!demo) hud.popups(events, config.tickHz);
+    juiceEvents(events);
+  }
+
+  /** Eventos do frame → partículas (também na demonstração), sons e trauma (só no jogo). */
+  function juiceEvents(events: readonly GameEvent[]) {
+    if (events.length === 0) return;
+    const p = state.player;
+    const chest = chestOf(p.pos);
+    for (const e of events) {
+      if (e.type === 'web_attached') particles.anchorPuff(e.anchor);
+      else if (e.type === 'landed' && e.speed > 8) particles.landingDust(p.pos, Math.min(1, (e.speed - 8) / 18));
+      else if (e.type === 'bonk') particles.sparks(chest, 16);
+      else if (e.type === 'player_hit') particles.hit(chest);
+      else if (e.type === 'web_released' && e.perfect && e.fullSwing) {
+        particles.perfect(chest);
+        if (!demo) crosshair.pulse();
+      } else if (e.type === 'momentum_gain' && Math.floor(e.value + 1e-9) > Math.floor(e.value - e.gain + 1e-9)) {
+        particles.levelUp(chest, Math.floor(e.value + 1e-9));
+      }
+      if (!demo && !reducedMotion) shake = addTrauma(shake, traumaFor(e, p.pos));
+    }
+    if (demo) return;
+    const cues = cuesFor(events, {
+      listener: chest,
+      launcherPos: (id) => state.level.launchers[id]?.pos ?? null,
+      momentumMax: config.momentum.max,
+    });
+    for (const c of cues) audio.play(c);
+  }
+
+  /** Por frame: vento, bipes (countdown e míssil perto), tremor, roll, speed lines, partículas. */
+  function updateJuice(realDt: number, simDt: number, inGame: boolean) {
+    const p = state.player;
+    const speed = Math.hypot(p.vel.x, p.vel.y, p.vel.z);
+    const active = inGame && !demo;
+    audio.setWind(active && state.phase === 'playing' ? speed : 0);
+
+    // countdown: um bipe a cada número (o "Já!" vem do evento go)
+    if (active && state.phase === 'countdown') {
+      const v = countdownValue(state.phaseTicks, config.tickHz);
+      if (v !== lastCountdown) audio.play({ kind: 'countdown' });
+      lastCountdown = v;
+    } else if (state.phase !== 'countdown') {
+      lastCountdown = null;
+    }
+
+    // míssil chegando: bipe cada vez mais rápido
+    const interval = active ? proximityInterval(maxMissileUrgency) : null;
+    if (interval === null) proximityTimer = 0;
+    else {
+      proximityTimer -= realDt;
+      if (proximityTimer <= 0) {
+        audio.play({ kind: 'proximity' });
+        proximityTimer = interval;
+      }
+    }
+
+    shake = stepShake(shake, realDt);
+    roll = reducedMotion || !active ? 0 : stepRoll(roll, lateralSpeed(p.vel, controller.getLiveLook().yaw), realDt);
+    speedLines.setVisible(active && !reducedMotion && flags.cam !== 'free');
+    speedLines.update(active ? speedLinesIntensity(speed) : 0, realDt);
+    particles.update(simDt);
   }
 
   function updateUi(now: number) {
@@ -557,6 +669,7 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     threatIndicator.setVisible(active);
     if (!game) {
       banner.hide();
+      maxMissileUrgency = 0;
       return;
     }
     const timeMs = msOf(s.progress.ticks);
@@ -575,7 +688,9 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
       chain: s.momentum.chain,
       stunned: s.player.stunTicks > 0,
     });
-    threatIndicator.update(threatRadar(s, controller.getLiveLook().yaw, cfg));
+    const blips = threatRadar(s, controller.getLiveLook().yaw, cfg);
+    threatIndicator.update(blips);
+    maxMissileUrgency = blips.reduce((m, b) => (b.kind === 'missile' ? Math.max(m, b.urgency) : m), 0);
 
     if (s.phase === 'countdown') {
       banner.showCountdown({ levelLabel: levelLabel(), value: Math.max(1, Math.ceil(s.phaseTicks / cfg.tickHz)), goldMs, silverMs, bestMs: levelBestMs(spec.index) });
@@ -608,7 +723,8 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     } else {
       const r = updateCameraFollow(camState, { feet: interp.feet, vel: interp.vel, yaw: look.yaw, pitch: look.pitch }, state.level, config.rig, dtSec);
       camState = r.state;
-      applyCameraPose(view.camera, r.pose);
+      const sh = shakeOffsets(shake);
+      applyCameraPose(view.camera, r.pose, { right: sh.right, up: sh.up, yaw: sh.yaw, pitch: sh.pitch, roll: sh.roll + roll });
     }
     view.setShadowFocus(interp.feet);
 

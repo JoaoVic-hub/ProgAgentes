@@ -27,6 +27,7 @@
 23. [ADR-023: Mísseis quase teleguiados de lançadores nos telhados](#adr-023-mísseis-quase-teleguiados-de-lançadores-nos-telhados)
 24. [ADR-024: Contra o relógio — sem vidas, estrelas e recordes por tempo](#adr-024-contra-o-relógio--sem-vidas-estrelas-e-recordes-por-tempo)
 25. [ADR-025: Telas como reducer puro com efeitos; demonstração no título](#adr-025-telas-como-reducer-puro-com-efeitos-demonstração-no-título)
+26. [ADR-026: Áudio sintetizado e "juice" dirigidos por eventos, com mapeamentos puros](#adr-026-áudio-sintetizado-e-juice-dirigidos-por-eventos-com-mapeamentos-puros)
 
 ---
 
@@ -608,6 +609,39 @@ A Etapa 3 traz título, seleção de nível, recordes, como jogar, pausa, result
 - ✅ Fluxo inteiro testado em Node: tabela completa com 27 transições válidas; todas as outras combinações de tela × ação são verificadas como ignoradas; fluxo do título ao título.
 - ✅ `overlay.ts` e `scoreboard.ts` saíram; a faixa central ficou só com countdown/"Já!"/queda.
 - ⚠️ Se a config mudar (tuning pelo F2) sem regravar o replay, a demonstração diverge. Não faz mal: é só vitrine, e recomeça quando a gravação acaba.
+
+---
+
+## ADR-026: Áudio sintetizado e "juice" dirigidos por eventos, com mapeamentos puros
+
+**Status:** Aceito
+**Data:** 2026-09-24
+
+### Contexto
+A Etapa 4 pede áudio, partículas, speed lines, tremor de câmera e roll ≤ 3°, com testes dos mapeamentos puros: tom limitado, ganho ≤ 1, pool de tamanho fixo e trauma que decai a 0. O projeto não usa assets externos (ADR-005).
+
+### Decisão
+- **Tudo sai dos eventos do tick** (os mesmos que o HUD e o animador já consomem). Nenhuma regra de jogo nova, e a lógica continua intocada e determinística. O juice é só apresentação.
+- **Áudio em duas metades:**
+  - `audio/mapping.ts` (puro, testado em Node): evento → *cue* com parâmetros (tom, ganho, intensidade), atenuação por distância, vento, bipe de proximidade, countdown;
+  - `audio/engine.ts`: só síntese WebAudio (osciladores + ruído filtrado com envelope), master com mudo e compressor contra picos, e um teto de 32 vozes.
+- **Tom do impulso sobe com o nível** (pentatônica a partir de sol 4, teto de 2,4 kHz): o ouvido acompanha o combo sem olhar o HUD. A perda é um glissando para baixo.
+- **Aviso sonoro de ameaça nunca some** (ganho mínimo 0,35 no aviso do lançador) e o **bipe de proximidade** acelera com a urgência do radar. É a deixa de áudio para o desvio.
+- **Política de autoplay:** o `AudioContext` nasce no primeiro gesto (clique/tecla de menu, "Jogar", retomar a pausa). A demonstração do título é muda: sem gesto, não haveria som mesmo, e som de vitrine incomoda.
+- **Camera juice** (`app/juice.ts`, puro):
+  - trauma somado por evento (acerto 0,75; bonk 0,35–0,6; pouso duro 0,12–0,32; explosão a < 30 m), decaindo 1,4/s;
+  - tremor ∝ trauma², com ruído determinístico de senoides, sem `Math.random`;
+  - roll alvo = velocidade lateral × 3°/22 m/s, limitado a ±3° e suavizado de forma independente do FPS.
+  - Aplicado **por cima** da pose da câmera (`render/camera.ts`), então a mira continua sendo o raio da câmera lógica (ADR-007).
+- **Partículas:** o núcleo `render/fx/particle-pool.ts` é puro, com arrays tipados alocados uma vez e fila circular (a nova substitui a mais antiga). Dois `InstancedMesh` (poeira normal e brilho aditivo) formam +2 draw calls.
+- **Speed lines** num canvas 2D por cima do jogo (embaixo do HUD). Com intensidade 0, o canvas some.
+- **`prefers-reduced-motion`** desliga tremor, roll e speed lines. A opção dentro do jogo é da Etapa 5.
+- Os atalhos de debug que criam eventos (K) passam pelo mesmo caminho: dá para ouvir e ver o acerto sem precisar levar um míssil.
+
+### Consequências
+- ✅ 16 testes novos cobrem as regras de apresentação sem navegador.
+- ✅ Bundle +5 kB gzip (178,6 kB); +2 draw calls.
+- ⚠️ Timbres e volumes foram ajustados "no papel" e verificados só pelos cues disparados (Chrome headless não toca áudio). Precisam de uma escuta de verdade (VERIFICACAO.md, Etapa 4).
 
 ---
 

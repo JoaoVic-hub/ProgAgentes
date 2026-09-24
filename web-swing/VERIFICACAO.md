@@ -158,6 +158,24 @@ Roteiro para conferir cada etapa no navegador.
 | 3.9 | Vá do título ao título por vários caminhos (pausa → Menu, resultados → Menu, fim de campanha → Menu) | Nunca fica preso numa tela. Ao voltar ao título, a demonstração recomeça. |
 | 3.10 | Primeiros segundos de cada nível | Sem travada ao ver o primeiro míssil/explosão (os shaders já foram compilados). |
 
+## Etapa 4 — Áudio, partículas e "juice"
+
+> Use fones ou caixas. O Chrome headless não toca áudio: esta parte só uma pessoa verifica.
+
+| # | Faça | Deve acontecer |
+|---|---|---|
+| 4.1 | Abra o jogo e fique no título | Silêncio (a demonstração é muda e o áudio ainda não existe). Na demonstração aparecem poeira ao agarrar as fachadas e anéis de brilho ao subir de impulso. |
+| 4.2 | Clique em qualquer botão do menu | Um "tic" curto. |
+| 4.3 | Jogar campanha | Bipe em 3, 2, 1 e um bipe mais agudo no "Já!". |
+| 4.4 | Prenda a teia, solte subindo, faça o flip | "Thwip" ao prender (com uma nuvenzinha na fachada), sopro ao soltar e ao fazer o flip. A cada ganho de impulso, um "plim" **cada vez mais agudo**; ao subir de nível, um arpejo, um anel de brilho em volta do herói e o retículo brilhando dourado na soltura perfeita. |
+| 4.5 | Erre (clique no céu), toque a rua, bata numa parede | Clique seco no vazio; som descendente ao perder impulso; baque + faíscas + tremor no bonk; poeira ao pousar forte. |
+| 4.6 | Ganhe velocidade (impulso ×4–×5) | O vento cresce e fica mais brilhante; riscos (speed lines) surgem nas bordas; a câmera inclina levemente (≤ 3°) nas curvas. |
+| 4.7 | Aproxime-se dos lançadores | Bipe duplo no aviso (laser); sopro no disparo; com um míssil chegando perto, bipes cada vez mais rápidos; explosões mais fracas quando longe. |
+| 4.8 | Leve um míssil (ou **K** com `?debug=1`) | Estrondo com zumbido no ouvido, faíscas e fumaça, tremor forte que passa em < 1 s, flash vermelho e "Atingido!". |
+| 4.9 | Checkpoint, queda num vão, fim do nível, fim da campanha | Plim duplo; assobio descendente; arpejo de chegada; fanfarra da campanha. |
+| 4.10 | Aperte **M** duas vezes e recarregue a página | "Som desligado (M)" / "Som ligado (M)"; depois de recarregar, a última escolha continua valendo. |
+| 4.11 | Ative "reduzir movimento" no sistema (Windows: Configurações → Acessibilidade → Efeitos visuais → Efeitos de animação desligado) e jogue | Sem tremor, sem inclinação e sem speed lines. Sons e partículas continuam. |
+
 ## Verificação automatizada feita no desenvolvimento
 
 | Data | Ambiente | O que foi verificado | Resultado |
@@ -171,6 +189,8 @@ Roteiro para conferir cada etapa no navegador.
 | 2026-09-24 | Etapa 2: `npm run feel` (god mode) | L1–L5 concluídos; 2 quedas nos vãos do L5. | ✅ |
 | 2026-09-24 | Etapa 2 (redesenho): `npm run verify` | 196 testes (impulso, mísseis e desviabilidade por fase, progressão contra o relógio, radar, recordes por tempo, migração v1 → v2, replay dourado com mísseis) + build 165 kB gzip | ✅ |
 | 2026-09-24 | Etapa 2 (redesenho): Chrome headless | Save v1 migrado com backup → contagem com metas e recorde migrado (0:30.00) → HUD com cronômetro, "★★★ até", velocidade e impulso (×1, combo 2 após swings e flips) → J: lançador mirando (laser + lâmpada visíveis, seta âmbar), míssil com rastro, seta vermelha → N → resumo com tempo, ★★★, "vs. recorde −17.51" → Enter → L2 → `?level=5&god=1` + N + Enter → "Campanha completa!" com o mouse liberado → save corrompido sem erro e com backup → formulário de nome recebe foco e envia. Console sem erros. | ✅ |
+| 2026-09-24 | Etapa 4: `npm run verify` | 223 testes (mapeamentos de áudio, juice da câmera, pool de partículas) + build 178,6 kB gzip | ✅ |
+| 2026-09-24 | Etapa 4: Chrome headless | Título sem contexto de áudio (`none`) → "Jogar" cria o contexto (`running`) → cues: ui, countdown ×3, go → swings: thwip, release, flip, gain, land, loss → K: hit (faíscas + "Atingido!") → J + queda: speed lines aparecem acima de 30 m/s → lançadores: warn e launch → M: mudo + aviso "Som desligado (M)", M de novo: som de volta, salvo no storage → N: finish. Speed lines com intensidade máxima conferidas em captura. Console sem erros. | ✅ (o áudio em si não é audível headless) |
 | 2026-09-24 | Etapa 3: `npm run verify` | 207 testes (tabela completa de telas, demonstração, relógio de campanha que não volta) + build 173 kB gzip | ✅ |
 | 2026-09-24 | Etapa 3: Chrome headless | Título com a demonstração andando e sem HUD → Como jogar (Esc volta) → Recordes → Seleção (L1/L2 livres, 3–5 bloqueados; tecla 3 ignorada) → Jogar campanha (lock no clique, 0 teias) → countdown com metas e recorde → perda do lock → pausa → Continuar → Reiniciar (campanha +1,58 s) → N → resultados com o mouse livre → R → N → Próximo nível (L2) → Menu (demonstração volta) → `?level=5&god=1` → Continuar → N → Ver resultado → "Campanha completa!" → Menu → formulário de nome (foco, envio) e destaque nos recordes. Console sem erros. | ✅ |
 | 2026-09-24 | Etapa 2 (redesenho): `npm run feel` | L1–L5 concluídos nos 3 modos (sem flip/god, flip/god, flip levando mísseis); mísseis por nível 3/5/14/12/30, acertos 0/1/2/3/6 (o piloto não desvia). | ✅ |
@@ -188,3 +208,6 @@ Roteiro para conferir cada etapa no navegador.
 | | Chrome | 3 | | |
 | | Firefox | 3 | | |
 | | Edge | 3 | | |
+| | Chrome | 4 | | |
+| | Firefox | 4 | | |
+| | Edge | 4 | | |

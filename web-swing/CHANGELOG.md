@@ -1,5 +1,25 @@
 # Changelog — web-swing
 
+## 0.4.0 — Etapa 4: áudio, partículas e "juice" (2026-09-24)
+
+### Adicionado
+- **Áudio sintetizado** (ADR-026):
+  - `audio/mapping.ts` (puro): evento → som, com tom do impulso subindo pela pentatônica, atenuação por distância para lançadores e explosões, vento pela velocidade, bipe de proximidade de míssil e bipes do countdown;
+  - `audio/engine.ts` (WebAudio): síntese com osciladores e ruído filtrado, compressor, teto de vozes e vento em loop;
+  - o contexto nasce no primeiro gesto; a demonstração do título é muda;
+  - **M** liga/desliga o som (salvo no navegador).
+- **Partículas** (`render/fx`): pool fixo puro + 2 `InstancedMesh`. Poeira ao agarrar e ao pousar, faíscas no bonk, anel de brilho ao subir de impulso, brilho na soltura perfeita, faíscas e fumaça no acerto de míssil.
+- **Câmera viva** (`app/juice.ts`): tremor por trauma (trauma², ruído determinístico, decai a 0) e roll de até 3° para dentro da curva, aplicados por cima da pose (a mira não muda).
+- **Speed lines** (`ui/speed-lines.ts`) acima de ~30 m/s.
+- Retículo com brilho dourado na soltura perfeita; aviso no HUD ao mudar o som.
+- `prefers-reduced-motion` desliga tremor, roll e speed lines.
+- Dev: `__webSwing.audio()` mostra o estado do contexto e os últimos sons; o atalho K também dispara som, partículas e tremor.
+
+### Medições
+- **Testes:** 223 (Vitest), todos verdes.
+- **Bundle de produção:** 666 kB → **178,6 kB gzip** (orçamento: 250 kB).
+- **Chrome headless:** todos os sons esperados disparados na ordem certa, contexto só depois do gesto, speed lines visíveis, sem erros no console.
+
 ## 0.3.0 — Etapa 3: telas de abertura, pausa, resultados e fim de campanha (2026-09-24)
 
 ### Adicionado

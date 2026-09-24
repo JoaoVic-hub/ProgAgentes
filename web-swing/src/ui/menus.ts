@@ -181,6 +181,7 @@ function howtoScreen(): string {
             <li><kbd>W A S D</kbd> mover · no balanço: <b>W</b> bombeia, <b>S</b> freia</li>
             <li><kbd>Espaço</kbd> pular · impulso com a teia presa · <b>flip</b> logo após soltar</li>
             <li><kbd>Esc</kbd> pausar</li>
+            <li><kbd>M</kbd> liga/desliga o som</li>
           </ul>
           <h3 class="m-sub">Objetivo</h3>
           <p>Chegar ao fim da avenida no <b>menor tempo</b>. Não há vidas: todo erro custa tempo. Cair num vão leva ao último checkpoint com o relógio correndo.</p>

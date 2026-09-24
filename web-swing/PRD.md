@@ -3,7 +3,7 @@
 ## 1. Visão Geral
 
 **Nome do Produto:** Web Swing  
-**Versão:** 0.3.0 (Etapa 3 concluída — telas)  
+**Versão:** 0.4.0 (Etapa 4 concluída — áudio e "juice")  
 **Tipo:** Jogo single-player 3D de navegador (percurso linear)  
 **Stack:** TypeScript + Vite + three.js 0.186 (WebGL) + Vitest, sem frameworks de UI e sem assets externos  
 **Público-alvo:** Jogador de desktop com mouse e teclado; sessões de 1–3 min por nível
@@ -73,15 +73,29 @@ Os 5 níveis ficam progressivamente mais difíceis: avenidas mais longas e irreg
 | FR-37 | **O relógio da campanha nunca volta** | "Reiniciar nível" e "Tentar de novo" são livres para treinar, mas o tempo da tentativa abandonada continua somado na campanha. A tabela geral premia a campanha feita de uma vez. |
 | FR-38 | **Sem travadas de shader** | Os shaders de cada nível são compilados ao carregá-lo (`renderer.compile`), durante o countdown ou o menu. |
 
-### 3.4 Planejado
+### 3.4 Implementado — Etapa 4 (áudio, partículas e "juice")
+
+| ID | Feature | Descrição |
+|---:|---------|-----------|
+| FR-40 | **Áudio sintetizado** | WebAudio, sem arquivos. Cada evento tem som: teia (*thwip*), soltura (com brilho na perfeita), flip/impulso, pulo, pouso (pelo impacto), bonk, clique no vazio, checkpoint, countdown e "Já!", queda, fim de nível e fanfarra da campanha, clique de menu. |
+| FR-41 | **Som do impulso** | O "plim" de ganho **sobe de tom** com o impulso (escala pentatônica); subir de nível toca um arpejo. A perda é um glissando descendente. |
+| FR-42 | **Som das ameaças** | Aviso do lançador (bipe duplo, nunca some), disparo e explosão atenuados pela distância, acerto com estrondo e zumbido. Um **bipe de proximidade** acelera conforme um míssil se aproxima. |
+| FR-43 | **Vento** | Ruído filtrado em loop, com volume e brilho crescendo com a velocidade. |
+| FR-44 | **Mudo** | `M` liga/desliga o som, e a escolha fica salva no navegador. O áudio só nasce num gesto do usuário (clique de menu ou "Jogar"); a demonstração do título é muda. |
+| FR-45 | **Partículas** | Poeira ao agarrar a fachada e ao pousar (pelo impacto); faíscas no bonk; anel de brilho ao subir de nível de impulso (na cor do medidor); brilho dourado na soltura perfeita; faíscas e fumaça ao levar um míssil. Pools fixos, 2 draw calls. |
+| FR-46 | **Câmera viva** | Tremor por **trauma** (míssil > bonk > pouso duro > explosão perto; decai em < 1 s) e inclinação de até **3°** para dentro da curva. É só visual: a mira continua sendo o raio da câmera lógica. |
+| FR-47 | **Speed lines** | Riscos radiais nas bordas acima de ~30 m/s, cheios a ~52 m/s (impulso alto), com o centro livre para a mira. |
+| FR-48 | **Retículo** | Brilho dourado rápido na soltura perfeita. |
+| FR-49 | **Reduzir movimento** | Com `prefers-reduced-motion` do sistema, sem tremor, inclinação e speed lines (a opção dentro do jogo vem na Etapa 5). |
+
+### 3.5 Planejado
 
 | Etapa | Features |
 |---|---|
-| 4 | Áudio sintetizado, partículas, *speed lines*, tremor de câmera |
 | 5 | Configurações (sensibilidade, inverter Y, FOV, volumes, qualidade, reduzir movimento), nível de treino |
 | 6 | Performance, CI e deploy (GitHub Pages) |
 
-### 3.5 Controles
+### 3.6 Controles
 
 | Ação | Tecla |
 |---|---|
@@ -90,9 +104,10 @@ Os 5 níveis ficam progressivamente mais difíceis: avenidas mais longas e irreg
 | Mover / direcionar o balanço | `W` `A` `S` `D` (`W` na descida = bombear; `S` = frear) |
 | Pular / impulso na teia / flip após soltar | `Espaço` |
 | Pausar | `Esc` |
+| Som liga/desliga | `M` |
 | Menus | Mouse ou `Tab` + `Enter`; `Esc` volta nos submenus; `1`–`5` na seleção de nível; `R` = tentar de novo nos resultados |
 
-### 3.6 Visual & UX
+### 3.7 Visual & UX
 
 | ID | Requisito |
 |---:|-----------|
@@ -129,8 +144,16 @@ Os 5 níveis ficam progressivamente mais difíceis: avenidas mais longas e irreg
 
 ## 6. Critérios de Aceite (Definition of Done)
 
+### Etapa 4
+- [x] `npm run verify` verde (223 testes, typecheck, build)
+- [x] Mapeamentos puros: tom limitado e subindo com o impulso, ganhos em [0, 1], atenuação por distância, vento, bipe de proximidade (testes)
+- [x] Pool de partículas de tamanho fixo; trauma decai a 0; roll ≤ 3° e independente do FPS; speed lines (testes)
+- [x] Áudio só nasce no gesto; cada evento toca o som certo; M muda e persiste (navegador)
+- [ ] Ouvir e sentir de verdade (roteiro manual de `VERIFICACAO.md`, Etapa 4): volume, timbres e intensidade do tremor
+
+
 ### Etapa 3
-- [x] `npm run verify` verde (207 testes, typecheck, build)
+- [x] `npm run verify` verde (207 testes na época, typecheck, build)
 - [x] Tabela completa de transições das telas; ação inválida ignorada; lock só nos gestos de "jogar"; nome só quando a campanha se qualifica (testes)
 - [x] Fluxo do título ao título sem beco sem saída (teste + navegador)
 - [x] O clique nos botões de menu não vira teia (navegador: 0 teias após o clique que pega o lock)

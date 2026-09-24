@@ -83,6 +83,25 @@ html, body {
   opacity: 0.6;
 }
 
+/* soltura perfeita: brilho dourado rápido (Etapa 4) */
+.crosshair.pulse .crosshair-mark {
+  animation: crosshair-pulse 0.35s ease-out;
+}
+
+@keyframes crosshair-pulse {
+  0% { border-color: #ffd766; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 0 18px 6px rgba(255, 215, 102, 0.9); transform: scale(1.6); }
+  100% { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5); transform: scale(1); }
+}
+
+/* speed lines (Etapa 4): canvas por cima do jogo, embaixo do HUD */
+.speed-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 .crosshair-reason {
   position: absolute;
   top: 26px;
