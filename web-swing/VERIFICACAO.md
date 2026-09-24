@@ -143,6 +143,21 @@ Roteiro para conferir cada etapa no navegador.
 | 2D.6 | Termine com uma flag de jogo (`?god=1`…) ou começando fora do L1 (`?level=2`) | O placar avisa que o run não entra na tabela geral e não pede nome. |
 | 2D.7 | `?resetScores=1` | Os recordes somem. |
 
+## Etapa 3 — Telas
+
+| # | Faça | Deve acontecer |
+|---|---|---|
+| 3.1 | Abra o jogo (sem flags) | Título "Web Swing" à esquerda, com Jogar campanha / Selecionar nível / Recordes / Como jogar. Ao fundo, a demonstração: o herói balançando pelo L1 (há "demonstração" no canto). O HUD não aparece. |
+| 3.2 | Como jogar → `Esc`; Recordes → Voltar | Cada tela abre e volta ao título. Os recordes mostram a tabela de campanhas e o melhor por nível. |
+| 3.3 | Selecionar nível | 5 cartões; só o 1 (e os seguintes a um nível concluído) abre. Os bloqueados dizem "conclua o nível N". As teclas 1–5 escolhem. |
+| 3.4 | Jogar campanha | O mouse é capturado no mesmo clique, começa o countdown do L1 e **nenhuma teia** é disparada pelo clique. |
+| 3.5 | `Esc` durante o jogo | Menu "Pausado" com o tempo. Continuar volta a jogar. Se o navegador recusar o mouse (Esc e clique rápidos demais), aparece o aviso e dá para clicar de novo. |
+| 3.6 | Pausa → Reiniciar nível | O nível recomeça do countdown. O tempo da tentativa abandonada continua na campanha (a pausa seguinte mostra "campanha"). |
+| 3.7 | Conclua um nível | Tela de resultados com o mouse livre: tempo, estrelas, "vs. recorde", "faltou … s", estatísticas. Enter = Próximo nível; R = Tentar de novo; Menu principal volta ao título. |
+| 3.8 | Conclua o L5 (ou `?level=5&god=1` + Continuar + N) → "Ver resultado da campanha" | "Campanha completa!" com tempo total e estrelas por nível. Numa campanha ranqueada do L1 que entra no top 10, pede o nome e depois mostra os recordes com o nome destacado. |
+| 3.9 | Vá do título ao título por vários caminhos (pausa → Menu, resultados → Menu, fim de campanha → Menu) | Nunca fica preso numa tela. Ao voltar ao título, a demonstração recomeça. |
+| 3.10 | Primeiros segundos de cada nível | Sem travada ao ver o primeiro míssil/explosão (os shaders já foram compilados). |
+
 ## Verificação automatizada feita no desenvolvimento
 
 | Data | Ambiente | O que foi verificado | Resultado |
@@ -156,6 +171,8 @@ Roteiro para conferir cada etapa no navegador.
 | 2026-09-24 | Etapa 2: `npm run feel` (god mode) | L1–L5 concluídos; 2 quedas nos vãos do L5. | ✅ |
 | 2026-09-24 | Etapa 2 (redesenho): `npm run verify` | 196 testes (impulso, mísseis e desviabilidade por fase, progressão contra o relógio, radar, recordes por tempo, migração v1 → v2, replay dourado com mísseis) + build 165 kB gzip | ✅ |
 | 2026-09-24 | Etapa 2 (redesenho): Chrome headless | Save v1 migrado com backup → contagem com metas e recorde migrado (0:30.00) → HUD com cronômetro, "★★★ até", velocidade e impulso (×1, combo 2 após swings e flips) → J: lançador mirando (laser + lâmpada visíveis, seta âmbar), míssil com rastro, seta vermelha → N → resumo com tempo, ★★★, "vs. recorde −17.51" → Enter → L2 → `?level=5&god=1` + N + Enter → "Campanha completa!" com o mouse liberado → save corrompido sem erro e com backup → formulário de nome recebe foco e envia. Console sem erros. | ✅ |
+| 2026-09-24 | Etapa 3: `npm run verify` | 207 testes (tabela completa de telas, demonstração, relógio de campanha que não volta) + build 173 kB gzip | ✅ |
+| 2026-09-24 | Etapa 3: Chrome headless | Título com a demonstração andando e sem HUD → Como jogar (Esc volta) → Recordes → Seleção (L1/L2 livres, 3–5 bloqueados; tecla 3 ignorada) → Jogar campanha (lock no clique, 0 teias) → countdown com metas e recorde → perda do lock → pausa → Continuar → Reiniciar (campanha +1,58 s) → N → resultados com o mouse livre → R → N → Próximo nível (L2) → Menu (demonstração volta) → `?level=5&god=1` → Continuar → N → Ver resultado → "Campanha completa!" → Menu → formulário de nome (foco, envio) e destaque nos recordes. Console sem erros. | ✅ |
 | 2026-09-24 | Etapa 2 (redesenho): `npm run feel` | L1–L5 concluídos nos 3 modos (sem flip/god, flip/god, flip levando mísseis); mísseis por nível 3/5/14/12/30, acertos 0/1/2/3/6 (o piloto não desvia). | ✅ |
 
 ## Registro da verificação manual
@@ -168,3 +185,6 @@ Roteiro para conferir cada etapa no navegador.
 | | Chrome | 2A–2D (redesenho) | | |
 | | Firefox | 2A–2D (redesenho) | | |
 | | Edge | 2A–2D (redesenho) | | |
+| | Chrome | 3 | | |
+| | Firefox | 3 | | |
+| | Edge | 3 | | |

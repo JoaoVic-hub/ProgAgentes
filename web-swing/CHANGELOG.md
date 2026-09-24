@@ -1,5 +1,34 @@
 # Changelog — web-swing
 
+## 0.3.0 — Etapa 3: telas de abertura, pausa, resultados e fim de campanha (2026-09-24)
+
+### Adicionado
+- `app/screens.ts`: fluxo de telas como reducer puro com efeitos (ADR-025). Tabela completa de transições testada; ações inválidas são ignoradas; o pointer lock só é pedido nos gestos de "jogar".
+- `ui/menus.ts`:
+  - título com a demonstração ao fundo;
+  - seleção de nível (estrelas, recorde, metas, ameaças, bloqueio até concluir o anterior, teclas 1–5);
+  - recordes (campanha + melhor por nível, com destaque);
+  - como jogar;
+  - pausa (Continuar, Reiniciar nível, Como jogar, Menu);
+  - resultados do nível (Próximo com Enter, Tentar de novo com R, Menu);
+  - fim de campanha com entrada de nome.
+- `app/demo.ts`: o replay dourado do L1 roda atrás dos menus, sem o countdown e em loop.
+- `renderer.compile` ao carregar cada nível (sem travada de shader no primeiro míssil).
+- `__webSwing.getScreen()` no console (dev).
+
+### Mudado
+- **O relógio da campanha nunca volta:** reiniciar/tentar de novo soma o tempo da tentativa abandonada (`restartLevel`).
+- Resultados do nível viraram tela própria, com o mouse livre; a faixa central ficou só com countdown, "Já!" e queda.
+- `?level=N` e `?cam=free` (dev) pulam o título; os atalhos N/J/K/R só valem na tela de jogo.
+
+### Removido
+- `ui/overlay.ts` ("Clique para jogar"/"Pausado") e `ui/scoreboard.ts` (substituídos pelos menus).
+
+### Medições
+- **Testes:** 207 (Vitest), todos verdes.
+- **Bundle de produção:** 652 kB → **173 kB gzip** (orçamento: 250 kB; +8 kB: menus e a gravação da demonstração).
+- **Chrome headless:** o fluxo completo do título ao título, sem erros no console (VERIFICACAO.md).
+
 ## 0.2.0 — Etapa 2 (redesenho): contra o relógio, impulso e mísseis (2026-09-24)
 
 Pedido do dono do projeto: tirar a pontuação por anéis. O objetivo passa a ser **terminar cada nível no menor tempo**, jogar bem deixa o herói **mais rápido**, e **mísseis quase teleguiados** perseguem o jogador. A versão com anéis ficou no checkpoint `web-swing-v0.2.0-aneis` (seção abaixo).

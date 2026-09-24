@@ -1,15 +1,18 @@
 /**
- * main.ts — cola do Web Swing (Etapa 2: campanha contra o relógio, impulso e mísseis).
+ * main.ts — cola do Web Swing (Etapa 3: telas de abertura, pausa e resultados).
  *
  * Único arquivo (junto com pose-viewer.ts) que conhece todas as camadas:
- * cria a campanha, liga input → step() → render/UI. A simulação roda em
- * ticks fixos (app/clock.ts); o render interpola entre o tick anterior e o
- * atual e usa o look ao vivo do mouse para a câmera. As fases terminais
- * (nível concluído, vitória) só saem por aqui: Enter → advanceAfterLevel;
- * vitória → placar e recordes de tempo.
+ * liga input → step() → render/UI e aplica o fluxo de telas. A simulação
+ * roda em ticks fixos (app/clock.ts); o render interpola entre o tick
+ * anterior e o atual e usa o look ao vivo do mouse para a câmera.
+ *
+ * Telas: o reducer puro app/screens.ts decide a próxima tela e os efeitos
+ * (criar/reiniciar/avançar o run, pedir/soltar o pointer lock); aqui só se
+ * aplicam os efeitos. Nos menus livres (título, seleção, recordes, como
+ * jogar), o fundo é a demonstração: o replay dourado do L1 (app/demo.ts).
  *
  * Ferramentas de dev (só em `npm run dev`):
- *   ?debug=1  painel + FPS     ?level=N  ?seed=N     ?cam=free  câmera livre
+ *   ?debug=1  painel + FPS     ?level=N (pula o título)  ?seed=N  ?cam=free  câmera livre
  *   ?slowmo=0.25              ?hz=120               ?record=1 + F9 baixa inputs
  *   ?god=1 mísseis não acertam ?resetScores=1       ?view=pose visualizador de poses
  *   F1 wireframes/raios/lançadores · F2 tuning · F3 congela · "." avança 1 tick
@@ -17,6 +20,7 @@
  */
 
 import { Vector3 } from 'three';
+import goldenFixture from './logic/__fixtures__/replay-l1.json';
 import { advanceClock, createClock } from './app/clock';
 import type { ClockConfig } from './app/clock';
 import { flagsAffectGameplay, parseFlags } from './app/flags';
@@ -25,11 +29,15 @@ import type { CameraFollowState } from './app/camera-follow';
 import { interpolateMissiles, interpolatePlayer } from './app/frame';
 import { loadSave, recordHighscore, recordLevelBests, resetSave, runQualifies, runTimeMs, writeSave } from './app/save';
 import { threatRadar } from './app/threat-radar';
+import { INITIAL_SCREEN, isMenuScreen, screenReducer } from './app/screens';
+import type { Screen, ScreenAction, ScreenEffect } from './app/screens';
+import { nextDemoInput, startDemo } from './app/demo';
+import type { DemoPlayback } from './app/demo';
 import { DEFAULT_GAME_CONFIG, secondsToTicks } from './logic/config';
-import { advanceAfterLevel, createRun, step } from './logic/engine';
-import { debugHit, debugJumpToFinish, debugRespawn, debugWarpAhead } from './logic/progression';
+import { advanceAfterLevel, createRun, restartLevel, step } from './logic/engine';
+import { debugHit, debugJumpToFinish, debugRespawn, debugWarpAhead, isTerminal } from './logic/progression';
 import { chestOf } from './logic/threats';
-import { ticksToMs } from './logic/highscores';
+import { ticksToMs, unlockedLevels } from './logic/highscores';
 import { LEVEL_SPECS } from './logic/level/specs';
 import { configHash, encodeInputs, hashState, replayRecording } from './logic/replay';
 import type { InputRecording } from './logic/replay';
@@ -48,12 +56,11 @@ import { createAnimator, updateAnimator } from './render/character/animator';
 import type { DebugDraw, DebugSegment } from './render/debug-draw';
 import { createMouseKeyboardController } from './input/mouse-keyboard';
 import { createStore } from './storage/store';
-import { createOverlay } from './ui/overlay';
 import { createCrosshair } from './ui/crosshair';
 import { createHud } from './ui/hud';
 import { createBanner } from './ui/banner';
-import { createScoreboard } from './ui/scoreboard';
-import type { ScoreboardData } from './ui/scoreboard';
+import { createMenus } from './ui/menus';
+import type { LevelCard, MenuData, MenuIntent } from './ui/menus';
 import { createThreatIndicator } from './ui/threat-indicator';
 import type { DebugPanel } from './ui/debug-panel';
 import type { TuningGui } from './ui/tuning-gui';
@@ -73,15 +80,24 @@ if (DEV && flags.view === 'pose') {
 }
 
 function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
-  // ------------------------------------------------------------ campanha
+  // ------------------------------------------------------------ campanha e telas
   let config: GameConfig = { ...DEFAULT_GAME_CONFIG, tickHz: flags.hz };
-  const runOptions = {
-    startLevel: flags.level ?? 1,
-    seedOverride: flags.seed,
-    ranked: !flagsAffectGameplay(flags),
-    god: flags.god,
-  };
-  let state: GameState = createRun(config, runOptions);
+  const runOptions = { seedOverride: flags.seed, ranked: !flagsAffectGameplay(flags), god: flags.god };
+  const demoRecording = (goldenFixture as unknown as { recording: InputRecording }).recording;
+  // ?level=N e ?cam=free (dev) pulam o título e vão direto ao jogo
+  const devDirect = DEV && (flags.level !== null || flags.cam === 'free');
+
+  let screen: Screen = devDirect ? { kind: 'game', paused: flags.cam !== 'free' } : INITIAL_SCREEN;
+  let state: GameState;
+  let demo: DemoPlayback | null = null;
+  let demoLook = { yaw: 0, pitch: 0.15 };
+  if (devDirect) {
+    state = createRun(config, { ...runOptions, startLevel: flags.level ?? 1 });
+  } else {
+    const d = startDemo(demoRecording, config);
+    state = d.state;
+    demo = d.playback;
+  }
   let prevState = state;
   const clockConfig: ClockConfig = {
     tickMs: 1000 / config.tickHz,
@@ -92,14 +108,15 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
   let alpha = 0;
   let frozen = false;
   let stepRequested = false;
-  let runEnded = false;
+  let menuHint = '';
 
-  // gravação de inputs (?record=1): sempre desde o início da campanha
+  // gravação de inputs (?record=1): sempre desde o início do run do jogador (nunca a demonstração)
   const recordingOn = DEV && flags.record;
   let recording: InputFrame[] = [];
   let recordingConfigHash = configHash(config);
   let recordingReproducible = true;
   let recordingSeed = state.level.seed;
+  let recordingStartLevel = state.startLevel;
 
   // recordes
   const store = createStore();
@@ -127,10 +144,23 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
   let makeDebugDraw: ((level: Level, activationRange: number) => DebugDraw) | null = null;
   let camState: CameraFollowState = createCameraFollow(state.level, { feet: state.level.start, vel: state.player.vel, yaw: 0, pitch: 0.15 }, config.rig);
 
+  /** Look da câmera: o do mouse no jogo, o da gravação na demonstração. */
+  const currentLook = () => (demo ? demoLook : controller.getLiveLook());
+
   function resetCamera() {
     const p = state.player;
-    const look = controller.getLiveLook();
+    const look = currentLook();
     camState = createCameraFollow(state.level, { feet: p.pos, vel: p.vel, yaw: look.yaw, pitch: look.pitch }, config.rig);
+  }
+
+  /** Estado novo sem continuidade com o anterior (novo run, reinício, troca de nível). */
+  function resetView() {
+    prevState = state;
+    animState = createAnimator(0);
+    if (!demo) controller.setLook(state.player.yaw, 0.15);
+    threatsView?.reset();
+    resetCamera();
+    clock = createClock();
   }
 
   function syncLevelViews() {
@@ -150,10 +180,9 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
       view.scene.add(debugDraw.group);
       debugDraw.setVisible(visible);
     }
-    prevState = state; // nada de interpolar entre níveis
-    animState = createAnimator(0);
-    controller.setLook(0, 0.15);
-    resetCamera();
+    resetView();
+    // compila os shaders do nível agora (countdown/menu), não no meio do primeiro swing
+    view.renderer.compile(view.scene, view.camera);
   }
 
   // ------------------------------------------------------------ input e UI
@@ -163,8 +192,7 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
   const banner = createBanner(uiRoot);
   const crosshair = createCrosshair(uiRoot);
   const threatIndicator = createThreatIndicator(uiRoot);
-  const scoreboard = createScoreboard(uiRoot);
-  const overlay = createOverlay(uiRoot);
+  const menus = createMenus(uiRoot);
   const levelLabel = () => `Nível ${state.level.spec.index} — ${state.level.spec.name}`;
   const msOf = (ticks: number) => ticksToMs(ticks, config.tickHz);
   const levelBestMs = (index: number): number | null => save.bestByLevel[String(index)]?.bestTimeMs ?? null;
@@ -185,73 +213,151 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
       controls.update();
       freeControls = controls;
     });
-  } else {
-    overlay.show('start', levelLabel());
   }
 
-  async function requestLock() {
-    // o Chrome recusa o lock por ~1 s depois de um Esc: avisa em vez de parecer quebrado
-    if (!(await controller.requestLock())) overlay.setHint('Não deu para capturar o mouse — aguarde um instante e clique de novo.');
+  // ------------------------------------------------------------ fluxo de telas
+  function beginDemo() {
+    const d = startDemo(demoRecording, config);
+    state = d.state;
+    demo = d.playback;
+    demoLook = { yaw: state.player.yaw, pitch: state.player.pitch };
+    resetView();
   }
-  overlay.onActivate(() => void requestLock());
-  controller.onLockChange((locked) => {
-    if (locked) {
-      overlay.hide();
-      lastFrameTime = null; // retoma sem "pular" o tempo parado
-    } else if (!scoreboard.isVisible()) {
-      overlay.show('paused', levelLabel());
-    }
-  });
 
-  // Enter segue depois do resumo do nível (só com o jogo em foco, não na pausa)
-  window.addEventListener('keydown', (e) => {
-    if (e.code !== 'Enter' && e.code !== 'NumpadEnter') return;
-    if (!(controller.isLocked() || flags.cam === 'free')) return;
-    if (state.phase === 'level_complete') {
-      e.preventDefault();
-      state = advanceAfterLevel(state);
+  function applyEffect(effect: ScreenEffect) {
+    switch (effect.type) {
+      case 'new_run':
+        demo = null;
+        state = createRun(config, { ...runOptions, startLevel: effect.startLevel });
+        recording = [];
+        recordingConfigHash = configHash(config);
+        recordingReproducible = true;
+        recordingSeed = state.level.seed;
+        recordingStartLevel = state.startLevel;
+        resetView();
+        break;
+      case 'restart_level':
+        state = restartLevel(state);
+        recordingReproducible = false; // o replay gravado não sabe de reinícios
+        resetView();
+        break;
+      case 'advance_level':
+        state = advanceAfterLevel(state);
+        resetView();
+        break;
+      case 'request_lock':
+        void requestLock();
+        break;
+      case 'release_lock':
+        if (document.pointerLockElement) document.exitPointerLock();
+        break;
     }
-  });
+  }
 
-  function scoreboardData(qualifies: boolean, highlight: number | null): ScoreboardData {
+  function dispatch(action: ScreenAction) {
+    const before = screen;
+    const t = screenReducer(screen, action);
+    if (t.screen === before && t.effects.length === 0) return;
+    screen = t.screen;
+    for (const e of t.effects) applyEffect(e);
+    if (!isMenuScreen(before) && isMenuScreen(screen)) beginDemo();
+    if (screen.kind !== 'game' || !screen.paused) menuHint = '';
+    refreshMenus();
+  }
+
+  function levelCards(): LevelCard[] {
+    const unlocked = unlockedLevels(save.bestByLevel, LEVEL_SPECS.length);
+    return LEVEL_SPECS.map((spec) => {
+      const best = save.bestByLevel[String(spec.index)];
+      return {
+        index: spec.index,
+        name: spec.name,
+        unlocked: unlocked.includes(spec.index),
+        stars: best?.stars ?? 0,
+        bestMs: best?.bestTimeMs ?? null,
+        goldMs: spec.goldTime * 1000,
+        silverMs: spec.silverTime * 1000,
+        launchers: spec.threats.launchers,
+        voids: spec.voids.count,
+      };
+    });
+  }
+
+  function menuData(): MenuData {
+    const s = state;
+    const last = s.results[s.results.length - 1];
     return {
-      runTimeMs: runTimeMs(state),
-      results: state.results,
-      tickHz: config.tickHz,
-      fullCampaign: state.startLevel === 1,
-      qualifies,
-      ranked: state.ranked,
+      levels: levelCards(),
       times: save.times,
-      highlight,
       persistent: store.persistent,
+      results:
+        screen.kind === 'results' && last
+          ? {
+              result: last,
+              timeMs: msOf(last.timeTicks),
+              previousBestMs,
+              goldMs: s.level.spec.goldTime * 1000,
+              silverMs: s.level.spec.silverTime * 1000,
+              runTimeMs: runTimeMs(s),
+              isLastLevel: s.level.spec.index === LEVEL_SPECS.length,
+              ranked: s.ranked,
+            }
+          : null,
+      campaign:
+        screen.kind === 'victory'
+          ? { runTimeMs: runTimeMs(s), results: s.results, tickHz: config.tickHz, fullCampaign: s.startLevel === 1, ranked: s.ranked }
+          : null,
+      pause: screen.kind === 'game' ? { levelLabel: levelLabel(), levelTimeMs: msOf(s.progress.ticks), runTimeMs: runTimeMs(s) } : null,
+      hint: menuHint,
     };
   }
 
-  // fim da campanha (vitória): solta o mouse, grava os melhores por nível e mostra o placar
-  function handleRunEnd() {
-    runEnded = true;
-    save = recordLevelBests(save, state);
-    writeSave(store, save);
-    if (document.pointerLockElement) document.exitPointerLock();
-    overlay.hide();
-    scoreboard.show(scoreboardData(runQualifies(save, state), null));
+  function refreshMenus() {
+    if (screen.kind === 'game' && (!screen.paused || flags.cam === 'free')) menus.hide();
+    else menus.show(screen, menuData());
   }
-  scoreboard.onSubmitName((name) => {
-    const r = recordHighscore(save, state, name, Date.now());
-    save = r.save;
-    writeSave(store, save);
-    scoreboard.show(scoreboardData(false, r.position));
-  });
-  scoreboard.onPlayAgain(() => {
-    scoreboard.hide();
-    state = createRun(config, runOptions);
-    prevState = state;
-    runEnded = false;
-    recording = [];
-    recordingConfigHash = configHash(config);
-    recordingReproducible = true;
-    recordingSeed = state.level.seed;
-    void requestLock(); // dentro do gesto do clique
+
+  function onIntent(intent: MenuIntent) {
+    switch (intent.type) {
+      case 'pick_level': {
+        const unlocked = unlockedLevels(save.bestByLevel, LEVEL_SPECS.length).includes(intent.level);
+        dispatch({ type: 'select_level', level: intent.level, unlocked });
+        break;
+      }
+      case 'next_level': {
+        const last = state.level.spec.index === LEVEL_SPECS.length;
+        const qualifies = last && runQualifies(save, advanceAfterLevel(state));
+        dispatch({ type: 'next_level', last, qualifies });
+        break;
+      }
+      case 'submit_name': {
+        const r = recordHighscore(save, state, intent.name, Date.now());
+        save = r.save;
+        writeSave(store, save);
+        dispatch({ type: 'name_submitted', position: r.position });
+        break;
+      }
+      default:
+        dispatch(intent);
+    }
+  }
+  menus.onIntent(onIntent);
+
+  async function requestLock() {
+    // o Chrome recusa o lock por ~1 s depois de um Esc: avisa em vez de parecer quebrado
+    if (!(await controller.requestLock())) {
+      menuHint = 'Não deu para capturar o mouse — aguarde um instante e clique em Continuar de novo.';
+      dispatch({ type: 'lock_failed' });
+      refreshMenus();
+    }
+  }
+  controller.onLockChange((locked) => {
+    if (locked) {
+      lastFrameTime = null; // retoma sem "pular" o tempo parado
+      dispatch({ type: 'lock_acquired' });
+    } else {
+      dispatch({ type: 'lock_lost' });
+    }
   });
 
   // ------------------------------------------------------------ ferramentas de dev
@@ -265,6 +371,7 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
   if (DEV) {
     (window as unknown as { __webSwing: unknown }).__webSwing = {
       getState: () => state,
+      getScreen: () => screen,
       hashState: () => hashState(state),
       /** Reexecuta uma gravação (JSON do F9) e devolve o hash final e se a config bate. */
       loadReplay: (rec: InputRecording) => {
@@ -279,6 +386,7 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     let tuningLoading: Promise<TuningGui> | null = null;
     /** Atalhos que mexem no estado por fora dos inputs: o run sai do ranking e a gravação deixa de reproduzir. */
     const cheat = (fn: (s: GameState) => GameState) => {
+      if (screen.kind !== 'game') return; // nunca na demonstração nem nos menus
       state = fn(state);
       recordingReproducible = false;
     };
@@ -322,7 +430,7 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
         resetCamera();
       } else if (e.code === 'KeyK') {
         cheat(debugHit);
-      } else if (e.code === 'KeyR') {
+      } else if (e.code === 'KeyR' && screen.kind === 'game') {
         cheat(debugRespawn);
       }
     });
@@ -331,7 +439,7 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
   function downloadRecording() {
     const rec: InputRecording = {
       version: 2,
-      levelIndex: runOptions.startLevel,
+      levelIndex: recordingStartLevel,
       seed: recordingSeed,
       tickHz: config.tickHz,
       god: runOptions.god,
@@ -342,15 +450,27 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     const url = URL.createObjectURL(new Blob([JSON.stringify(rec)], { type: 'application/json' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = `web-swing-L${runOptions.startLevel}-t${state.tick}.json`;
+    a.download = `web-swing-L${recordingStartLevel}-t${state.tick}.json`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   // ------------------------------------------------------------ loop
   function tickOnce(out: GameEvent[]) {
-    const input = controller.consumeInput();
-    if (recordingOn) recording.push(input);
+    let input: InputFrame;
+    if (demo) {
+      const n = nextDemoInput(demo);
+      if (!n.input || isTerminal(state.phase)) {
+        beginDemo(); // acabou a gravação (ou o nível): recomeça a demonstração
+        return;
+      }
+      demo = n.playback;
+      input = n.input;
+      demoLook = { yaw: input.yaw, pitch: input.pitch };
+    } else {
+      input = controller.consumeInput();
+      if (recordingOn) recording.push(input);
+    }
     prevState = state;
     state = step(state, input);
     for (const e of state.events) out.push(e);
@@ -366,7 +486,8 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     debugPanel?.begin();
     const realDtMs = lastFrameTime === null ? 0 : Math.min(now - lastFrameTime, 250);
     lastFrameTime = now;
-    const running = (flags.cam === 'free' || controller.isLocked()) && !runEnded;
+    const inGame = screen.kind === 'game' && !screen.paused && (flags.cam === 'free' || controller.isLocked());
+    const running = inGame || demo !== null;
     const events: GameEvent[] = [];
     let ticksThisFrame = 0;
 
@@ -376,7 +497,7 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
       for (let i = 0; i < adv.ticks; i++) tickOnce(events);
       ticksThisFrame = adv.ticks;
       alpha = adv.alpha;
-    } else if (frozen && stepRequested) {
+    } else if (frozen && stepRequested && running) {
       tickOnce(events);
       ticksThisFrame = 1;
       stepRequested = false;
@@ -385,7 +506,7 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
 
     syncLevelViews();
     handleEvents(events, now);
-    if (state.phase === 'victory' && !runEnded) handleRunEnd();
+    if (screen.kind === 'game' && state.phase === 'level_complete') dispatch({ type: 'level_complete' });
 
     // animação anda no tempo da SIMULAÇÃO (parada na pausa/F3, lenta no slowmo); a câmera usa o tempo real
     const simDtSec = running && !frozen ? (realDtMs * flags.slowmo) / 1000 : ticksThisFrame / config.tickHz;
@@ -408,7 +529,7 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
         threatsView?.reset();
       } else if (e.type === 'missile_exploded') {
         threatsView?.explode(e.pos, e.hitPlayer);
-      } else if (e.type === 'level_complete') {
+      } else if (e.type === 'level_complete' && !demo) {
         previousBestMs = levelBestMs(e.result.levelIndex);
         if (state.ranked) {
           // melhor por nível salvo na hora (não depende de terminar a campanha)
@@ -416,23 +537,28 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
           writeSave(store, save);
         }
       }
-      if (DEV && e.type !== 'web_missed') {
+      if (DEV && !demo && e.type !== 'web_missed') {
         const extra = e.type === 'momentum_gain' ? ` +${e.gain} → ${e.value.toFixed(2)}` : e.type === 'momentum_loss' ? ` ${e.from.toFixed(2)} → ${e.to.toFixed(2)}` : '';
         eventLog.push(`${state.tick} ${e.type}${'kind' in e ? ` ${String(e.kind)}` : ''}${'reason' in e ? ` (${e.reason})` : ''}${extra}`);
         if (eventLog.length > 8) eventLog.shift();
       }
     }
-    hud.popups(events, config.tickHz);
+    if (!demo) hud.popups(events, config.tickHz);
   }
 
   function updateUi(now: number) {
     const s = state;
     const cfg = config;
-    const playingLike = s.phase === 'countdown' || s.phase === 'playing' || s.phase === 'respawning';
+    const game = screen.kind === 'game' && flags.cam !== 'free';
+    const active = game && !(screen.kind === 'game' && screen.paused);
     const spec = s.level.spec;
-    hud.setVisible(!runEnded && flags.cam !== 'free');
-    crosshair.setVisible(playingLike && flags.cam !== 'free');
-    threatIndicator.setVisible(!runEnded && flags.cam !== 'free');
+    hud.setVisible(game);
+    crosshair.setVisible(active && (s.phase === 'countdown' || s.phase === 'playing' || s.phase === 'respawning'));
+    threatIndicator.setVisible(active);
+    if (!game) {
+      banner.hide();
+      return;
+    }
     const timeMs = msOf(s.progress.ticks);
     const goldMs = spec.goldTime * 1000;
     const silverMs = spec.silverTime * 1000;
@@ -454,19 +580,7 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     if (s.phase === 'countdown') {
       banner.showCountdown({ levelLabel: levelLabel(), value: Math.max(1, Math.ceil(s.phaseTicks / cfg.tickHz)), goldMs, silverMs, bestMs: levelBestMs(spec.index) });
     } else if (s.phase === 'respawning') banner.showRespawn();
-    else if (s.phase === 'level_complete') {
-      const r = s.results[s.results.length - 1];
-      banner.showLevelComplete({
-        result: r,
-        timeMs: msOf(r.timeTicks),
-        previousBestMs,
-        goldMs,
-        silverMs,
-        runTimeMs: runTimeMs(s),
-        isLastLevel: spec.index === LEVEL_SPECS.length,
-        ranked: s.ranked,
-      });
-    } else if (s.phase === 'playing' && now < goBannerUntil) banner.showGo();
+    else if (s.phase === 'playing' && now < goBannerUntil) banner.showGo();
     else banner.hide();
   }
 
@@ -485,7 +599,7 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
   function renderFrame(dtSec: number, simDtSec: number, events: readonly GameEvent[]) {
     const p = state.player;
     const interp = interpolatePlayer(prevState.player, p, alpha);
-    const look = controller.getLiveLook();
+    const look = currentLook();
 
     if (flags.cam === 'free') {
       freeControls?.update();
@@ -518,7 +632,7 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     rig.update(interp.feet, anim.pose, animState.orientation, contact, simDtSec);
     rig.handWorld(handPos);
     webLine.update(contact ? handPos : null, contact, simDtSec);
-    const aiming = state.phase === 'playing' && !p.rope;
+    const aiming = !demo && screen.kind === 'game' && state.phase === 'playing' && !p.rope;
     webLine.updateMarker(aiming ? state.aim.point : null, view.camera, state.aim.source === 'assist');
     crosshair.update(state.aim, p.rope !== null);
     const warnTicks = Math.max(1, secondsToTicks(config.missiles.warnTime, config.tickHz));
@@ -569,9 +683,10 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     const info = view.info();
     const shots = s.stats.webShots;
     const missPct = shots ? Math.round((100 * s.stats.webMisses) / shots) : 0;
+    const screenLabel = screen.kind === 'game' ? `game${screen.paused ? ' (pausa)' : ''}` : screen.kind;
     return [
       `L${s.level.spec.index} ${s.level.spec.name} · seed ${s.level.seed} · ${config.tickHz} Hz${flags.slowmo !== 1 ? ` · slowmo ${flags.slowmo}` : ''}${frozen ? ' · CONGELADO (F3)' : ''}`,
-      `fase ${s.phase}${s.phaseTicks ? ` (${s.phaseTicks})` : ''}${s.god ? ' · god' : ''} · ${s.ranked ? 'ranqueado' : 'NÃO ranqueado'} · cp ${s.checkpointIndex} · tempo ${(s.progress.ticks / config.tickHz).toFixed(2)} s`,
+      `tela ${screenLabel}${demo ? ' · DEMONSTRAÇÃO' : ''} · fase ${s.phase}${s.phaseTicks ? ` (${s.phaseTicks})` : ''}${s.god ? ' · god' : ''} · ${s.ranked ? 'ranqueado' : 'NÃO ranqueado'} · cp ${s.checkpointIndex} · tempo ${(s.progress.ticks / config.tickHz).toFixed(2)} s`,
       `tick ${s.tick} (+${ticksThisFrame}) · alpha ${alpha.toFixed(2)}`,
       `modo ${p.mode}${p.grounded ? ` (${p.groundKind})` : ''} · anim ${animState.current}${p.stunTicks ? ' · ATORDOADO' : ''}`,
       `pos (${f(p.pos.x)}, ${f(p.pos.y)}, ${f(p.pos.z)}) · |v| ${f(speed)} m/s · chegada ${f(s.level.finishZ - p.pos.z)} m`,
@@ -586,5 +701,6 @@ function startGame(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     ];
   }
 
+  refreshMenus();
   requestAnimationFrame(loop);
 }

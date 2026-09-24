@@ -3,7 +3,7 @@
 ## 1. Visão Geral
 
 **Nome do Produto:** Web Swing  
-**Versão:** 0.2.0 (Etapa 2 concluída — redesenho contra o relógio)  
+**Versão:** 0.3.0 (Etapa 3 concluída — telas)  
 **Tipo:** Jogo single-player 3D de navegador (percurso linear)  
 **Stack:** TypeScript + Vite + three.js 0.186 (WebGL) + Vitest, sem frameworks de UI e sem assets externos  
 **Público-alvo:** Jogador de desktop com mouse e teclado; sessões de 1–3 min por nível
@@ -41,7 +41,7 @@ Os 5 níveis ficam progressivamente mais difíceis: avenidas mais longas e irreg
 | FR-07 | **Soltura, impulso e flip** | A soltura dá um boost proporcional à qualidade (ideal: saída a 35° acima do horizonte; "perfeita" com q ≥ 0,8). Espaço com teia presa dá impulso tangencial (1× por teia). Espaço até 0,4 s após soltar no ar faz um flip. Boost, flip e impulso exigem teia presa por ≥ 0,35 s, o que impede voar com spam de cliques. A teia solta sozinha acima da âncora ou após 0,5 s encostado numa parede. |
 | FR-08 | **Câmera em 3ª pessoa** | Pivô sobre o ombro que nunca entra em paredes, com suavização independente de FPS e *feed-forward* (sem atraso em velocidade constante: o retículo coincide com a mira). Distância de 5,5 → 8 m e FOV de 70° → 85° conforme a velocidade. O braço da câmera colide com os prédios. |
 | FR-09 | **Boneco procedural** | Feito de primitivas (1,8 m), com 8 estados: idle, run, jump, fall, swing, flip, land e bonk. Tem crossfade entre estados. No swing, o corpo inclina para a teia e o braço aponta para ela. |
-| FR-10 | **Pausa** | Controle por *pointer lock*. O overlay "Clique para jogar / Pausado" aparece, e o clique que retoma não dispara teia. |
+| FR-10 | **Pausa** | Controle por *pointer lock*. Perder o lock (Esc, trocar de janela) pausa o jogo e abre o menu de pausa (Etapa 3); o clique que retoma não dispara teia. |
 
 ### 3.2 Implementado — Etapa 2 (contra o relógio, impulso, mísseis e recordes)
 
@@ -59,16 +59,29 @@ Os 5 níveis ficam progressivamente mais difíceis: avenidas mais longas e irreg
 | FR-18 | **Recordes por tempo** | Tabela geral: top 10 dos **menores tempos** de campanha completa (L1 → L5; empate → quem fez primeiro). Melhor por nível: menor tempo e mais estrelas, salvos a cada nível concluído. Salvos no navegador (`web-swing:v1:save`, dados v2), com migração do v1 (anéis: a tabela recomeça e o melhor tempo por nível é aproveitado) e backup se o dado estiver corrompido. Runs com flags de debug não entram. |
 | FR-19 | **HUD** | À esquerda: nível, cronômetro (m:ss.cc), próxima estrela em jogo ("★★★ até 0:25.00") e recorde do nível. À direita: velocidade (m/s), medidor de impulso em 5 segmentos (cor muda com o nível; treme atordoado) e combo. Popups de ganho/perda e de checkpoint (com o tempo parcial). Flash vermelho ao levar um míssil. **Radar de ameaças:** setas em volta do retículo apontam para mísseis (vermelhas) e lançadores mirando (âmbar), e o anel pulsa quando um míssil está muito perto. |
 
-### 3.3 Planejado
+### 3.3 Implementado — Etapa 3 (telas)
+
+| ID | Feature | Descrição |
+|---:|---------|-----------|
+| FR-30 | **Título** | Logo, "Jogar campanha", "Selecionar nível", "Recordes" e "Como jogar", com a melhor campanha e o progresso (níveis concluídos, estrelas). Ao fundo, uma **demonstração**: o replay dourado do L1 jogando de verdade (swings, flips, mísseis), em loop. |
+| FR-31 | **Seleção de nível** | Cartões dos 5 níveis com estrelas, recorde, metas de ouro/prata e ameaças (lançadores, vãos). Um nível só abre depois de concluir o anterior. Teclas 1–5. Começar num nível segue a campanha a partir dele. |
+| FR-32 | **Recordes** | Tabela dos 10 menores tempos de campanha completa (com o recém-salvo destacado) e o melhor tempo/estrelas de cada nível. |
+| FR-33 | **Como jogar** | Controles, objetivo, impulso, mísseis e estrelas. Abre do título ou da pausa. |
+| FR-34 | **Pausa** | Continuar (volta só quando o pointer lock é confirmado; se o navegador recusar, avisa), Reiniciar nível, Como jogar e Menu principal. Mostra o tempo do nível e da campanha. |
+| FR-35 | **Resultados do nível** | Tela própria com o tempo, estrelas, diferença para o recorde, quanto faltou para a próxima estrela e as estatísticas; "Próximo nível" (Enter), "Tentar de novo" (R) e "Menu". O mouse fica livre. |
+| FR-36 | **Fim de campanha** | Tempo total, tempos e estrelas por nível, entrada de nome se entrou no top 10 (depois leva aos recordes com o nome destacado), "Jogar de novo" e "Menu". Não há game over (ADR-024). |
+| FR-37 | **O relógio da campanha nunca volta** | "Reiniciar nível" e "Tentar de novo" são livres para treinar, mas o tempo da tentativa abandonada continua somado na campanha. A tabela geral premia a campanha feita de uma vez. |
+| FR-38 | **Sem travadas de shader** | Os shaders de cada nível são compilados ao carregá-lo (`renderer.compile`), durante o countdown ou o menu. |
+
+### 3.4 Planejado
 
 | Etapa | Features |
 |---|---|
-| 3 | Tela de abertura, seleção de nível, pausa com menu, resultados, game over e vitória |
 | 4 | Áudio sintetizado, partículas, *speed lines*, tremor de câmera |
 | 5 | Configurações (sensibilidade, inverter Y, FOV, volumes, qualidade, reduzir movimento), nível de treino |
 | 6 | Performance, CI e deploy (GitHub Pages) |
 
-### 3.4 Controles
+### 3.5 Controles
 
 | Ação | Tecla |
 |---|---|
@@ -77,16 +90,16 @@ Os 5 níveis ficam progressivamente mais difíceis: avenidas mais longas e irreg
 | Mover / direcionar o balanço | `W` `A` `S` `D` (`W` na descida = bombear; `S` = frear) |
 | Pular / impulso na teia / flip após soltar | `Espaço` |
 | Pausar | `Esc` |
-| Continuar depois do resumo do nível | `Enter` |
+| Menus | Mouse ou `Tab` + `Enter`; `Esc` volta nos submenus; `1`–`5` na seleção de nível; `R` = tentar de novo nos resultados |
 
-### 3.5 Visual & UX
+### 3.6 Visual & UX
 
 | ID | Requisito |
 |---:|-----------|
 | FR-20 | Paleta de entardecer centralizada em `render/palette.ts`, sem cores fixas no código de render. |
 | FR-21 | Prédios instanciados com janelas procedurais no shader (padrão suavizado ao longe). O vidro tem visual próprio, porque o jogador precisa reconhecer de longe o que não segura teia. |
 | FR-22 | Retículo: ○ com alvo, azul quando a assistência escolheu o alvo, ✕ sem alvo, com o motivo ("fora de alcance", "baixo demais", "vidro não segura teia"). Um marcador 3D mostra o ponto real da âncora. |
-| FR-23 | HUD e overlays em DOM (acessíveis, com texto nítido), fontes do sistema. |
+| FR-23 | HUD e menus em DOM (acessíveis: diálogo com título, foco no botão principal, navegação por teclado), fontes do sistema. |
 | FR-24 | DPR limitado a 2 e redimensionamento via `ResizeObserver`. |
 | FR-25 | Lançadores com base, cabeça e cano que seguem o jogador; laser e lâmpada de aviso aditivos (visíveis de longe); mísseis com brilho do motor e rastro de fumaça; explosões aditivas com fumaça. Tudo instanciado em pool fixo (8 draw calls). Gruas amarelas, água escura no fundo dos vãos e faixa luminosa nos checkpoints. |
 
@@ -105,7 +118,7 @@ Os 5 níveis ficam progressivamente mais difíceis: avenidas mais longas e irreg
 
 ---
 
-## 5. Fora do Escopo (v0.2)
+## 5. Fora do Escopo (v0.3)
 
 - Multiplayer, mobile/touch, gamepad
 - Mundo aberto, modo infinito, vidas/fim de jogo
@@ -116,8 +129,17 @@ Os 5 níveis ficam progressivamente mais difíceis: avenidas mais longas e irreg
 
 ## 6. Critérios de Aceite (Definition of Done)
 
+### Etapa 3
+- [x] `npm run verify` verde (207 testes, typecheck, build)
+- [x] Tabela completa de transições das telas; ação inválida ignorada; lock só nos gestos de "jogar"; nome só quando a campanha se qualifica (testes)
+- [x] Fluxo do título ao título sem beco sem saída (teste + navegador)
+- [x] O clique nos botões de menu não vira teia (navegador: 0 teias após o clique que pega o lock)
+- [x] Reiniciar/tentar de novo não fazem o relógio da campanha voltar (testes + navegador)
+- [ ] Roteiro manual de `VERIFICACAO.md` (Etapa 3) executado por uma pessoa
+
+
 ### Etapa 2 (redesenho contra o relógio)
-- [x] `npm run verify` verde (196 testes, typecheck, build)
+- [x] `npm run verify` verde (196 testes na época, typecheck, build)
 - [x] Impulso: ganhos, perdas, perdas parciais, escoamento e efeito na velocidade (testes)
 - [x] Mísseis: ciclo do lançador, linha de visada, guiagem limitada, previsão, cobertura, acerto contínuo, invulnerabilidade; desviáveis em todas as fases e mais difíceis a cada fase (testes)
 - [x] Campanha contra o relógio: countdown, checkpoints com o relógio correndo, estrelas por tempo, vitória (testes + navegador)

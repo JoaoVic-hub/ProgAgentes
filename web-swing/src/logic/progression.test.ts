@@ -129,7 +129,7 @@ describe('Campanha contra o relógio', () => {
     expect(eventsOf(won, 'victory')).toHaveLength(1);
   });
 
-  it('restartLevel refaz o nível do zero (relógio, impulso, mísseis) e mantém a campanha', () => {
+  it('restartLevel refaz o nível do zero (relógio, impulso, mísseis); o relógio da campanha nunca volta', () => {
     const base = playing();
     const s = { ...base, runTicks: 800, momentum: { ...base.momentum, value: 4 }, progress: { ...base.progress, ticks: 900 } };
     const again = restartLevel(incoming(s));
@@ -138,7 +138,19 @@ describe('Campanha contra o relógio', () => {
     expect(again.progress.ticks).toBe(0);
     expect(again.momentum.value).toBe(0);
     expect(again.threats.missiles).toEqual([]);
-    expect(again.runTicks).toBe(800);
+    expect(again.runTicks).toBe(800 + 900); // a tentativa abandonada conta no total
+  });
+
+  it('tentar de novo um nível concluído troca o resultado, mas o tempo já gasto continua na campanha', () => {
+    const done = step(nearFinish(playing({ progress: { ...playing().progress, ticks: 1000 }, runTicks: 5000 })), input());
+    expect(done.results).toHaveLength(1);
+    const again = restartLevel(done);
+    expect(again.phase).toBe('countdown');
+    expect(again.results).toEqual([]);
+    expect(again.runTicks).toBe(5000 + 1001);
+    const second = step(nearFinish({ ...again, phase: 'playing', progress: { ...again.progress, ticks: 700 } }), input());
+    expect(second.results.map((r) => r.timeTicks)).toEqual([701]);
+    expect(second.runTicks).toBe(5000 + 1001 + 701);
   });
 
   it('fases terminais não avançam com step()', () => {

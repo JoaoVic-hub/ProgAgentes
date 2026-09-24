@@ -126,9 +126,19 @@ export function sandboxState(level: Level, config: GameConfig = DEFAULT_GAME_CON
   );
 }
 
-/** O mesmo nível do zero (relógio zerado). Para o menu de pausa (Etapa 3). */
+/**
+ * O mesmo nível do zero ("Reiniciar" na pausa, "Tentar de novo" nos resultados).
+ * O relógio da CAMPANHA nunca volta (ADR-025): o tempo da tentativa abandonada
+ * entra no total; depois de concluído, o resultado sai da lista (vai ser
+ * substituído), mas o tempo dele continua somado.
+ */
 export function restartLevel(state: GameState): GameState {
-  return levelState(state.level, state.config, carryOf(state), 'countdown');
+  const carry = carryOf(state);
+  const next: Carry =
+    state.phase === 'level_complete'
+      ? { ...carry, results: state.results.slice(0, -1) }
+      : { ...carry, runTicks: state.runTicks + state.progress.ticks };
+  return levelState(state.level, state.config, next, 'countdown');
 }
 
 /** Depois de level_complete: próximo nível (countdown) ou vitória. */

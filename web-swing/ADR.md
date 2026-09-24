@@ -26,6 +26,7 @@
 22. [ADR-022: Impulso (momentum) no lugar de pontos](#adr-022-impulso-momentum-no-lugar-de-pontos)
 23. [ADR-023: Mísseis quase teleguiados de lançadores nos telhados](#adr-023-mísseis-quase-teleguiados-de-lançadores-nos-telhados)
 24. [ADR-024: Contra o relógio — sem vidas, estrelas e recordes por tempo](#adr-024-contra-o-relógio--sem-vidas-estrelas-e-recordes-por-tempo)
+25. [ADR-025: Telas como reducer puro com efeitos; demonstração no título](#adr-025-telas-como-reducer-puro-com-efeitos-demonstração-no-título)
 
 ---
 
@@ -288,7 +289,7 @@ Em ordem de prioridade:
 **Data:** 2026-09-24
 
 ### Decisão
-- Overlay, retículo, painel de debug e (Etapas 2–3) HUD e telas em HTML/CSS dentro de `#ui`.
+- Retículo, painel de debug, HUD, faixa central e (Etapa 3) telas de menu em HTML/CSS dentro de `#ui`.
 - O `#ui` tem `pointer-events: none`; só os cartões clicáveis reativam.
 - O pointer lock só é pedido no gesto do usuário (botão).
 - Cliques só contam depois que o lock é confirmado, para que o clique que retoma não dispare a teia.
@@ -390,13 +391,13 @@ O plano (§2) dava +50% no anel a partir de 28 m/s e +100% a partir de 40 m/s, e
 ### Decisão
 - `GamePhase`: countdown → playing ⇄ respawning; playing → level_complete; e victory. Fonte da verdade única, como no ADR-007 do snake-duel. (Até o checkpoint `web-swing-v0.2.0-aneis` havia também level_failed e game_over; saíram com as vidas, ADR-024.)
 - `engine.step` só despacha pela fase. `logic/progression.ts` faz o resto. Na fase playing, o tick é: impulso → config efetiva → física do jogador → queda no vão → mísseis (acerto → empurrão + atordoamento) → impulso → checkpoints → chegada.
-- As fases **terminais não avançam em `step()`**. Só a cola sai delas: Enter → `advanceAfterLevel`; vitória → placar → `createRun`. `restartLevel` fica pronto para o menu de pausa da Etapa 3.
+- As fases **terminais não avançam em `step()`**. Só a cola sai delas, pelos efeitos das telas (ADR-025): "Próximo nível" → `advanceAfterLevel`; "Tentar de novo"/"Reiniciar" → `restartLevel`; "Jogar" → `createRun`.
 - `logic/player/simulate.ts` é o tick físico da Etapa 1, sem mudança de comportamento: os 119 testes anteriores passaram sem alteração, exceto 1 (as gruas ancoram).
 - Atalhos de debug são funções puras e marcam o run como não ranqueado: N (chegada), J (avança 60 m, para testar trechos com lançadores e vãos), K (acerto de míssil simulado), R (checkpoint). `?god=1` = mísseis não acertam.
 
 ### Consequências
 - ✅ Toda a campanha é testável em Node (14 testes de progressão) e reproduzível (replay dourado).
-- ⚠️ A UI de transição da Etapa 2 é mínima (faixa central + Enter). As telas completas vêm na Etapa 3.
+- ✅ Desde a Etapa 3, as transições têm telas próprias (ADR-025).
 
 ---
 
@@ -581,6 +582,32 @@ Com o objetivo de "terminar no menor tempo", vidas e fim de jogo competiriam com
 - ✅ Uma única moeda (tempo): qualquer decisão do jogador se resume a "isso me deixa mais rápido?".
 - ✅ Correr riscos (voar baixo, cortar perto de mísseis, soltar no limite) compensa: é mais impulso e menos tempo.
 - ⚠️ Tempos de ouro e prata provisórios: calibrar com partidas reais (o piloto não serve de referência de habilidade).
+
+---
+
+## ADR-025: Telas como reducer puro com efeitos; demonstração no título
+
+**Status:** Aceito
+**Data:** 2026-09-24
+
+### Contexto
+A Etapa 3 traz título, seleção de nível, recordes, como jogar, pausa, resultados e fim de campanha. O plano pede uma tabela completa de transições testada, que ação inválida seja ignorada e que o pointer lock só seja pedido no gesto de "jogar". O clique num botão de menu não pode virar teia.
+
+### Decisão
+- `app/screens.ts`: `screenReducer(tela, ação) → { tela, efeitos }`, puro. Os efeitos são dados que a cola aplica na ordem: `new_run`, `restart_level`, `advance_level`, `request_lock`, `release_lock`. Uma ação que não vale na tela atual devolve a mesma tela, sem efeitos.
+- **O jogo como tela:** `{ kind: 'game', paused }`. Perder o lock (Esc, trocar de janela, lock recusado) → pausa. "Continuar" só pede o lock; a tela só volta a jogar com `lock_acquired`. Assim o Chrome recusar o lock por ~1 s depois de um Esc não deixa o jogo num estado "rodando sem mouse".
+- **Mouse livre nos resultados e no fim de campanha** (`release_lock`): são telas de decisão, com botões. Voltar a jogar pede o lock de novo no próprio clique (gesto válido).
+- **O clique não vira teia:** o controlador só registra o botão com o lock confirmado; o clique que pede o lock nunca chega à simulação (verificado: 0 teias após "Jogar").
+- **O relógio da campanha nunca volta:** `restartLevel` soma o tempo da tentativa abandonada em `runTicks`. Depois de concluído, o resultado sai da lista (vai ser substituído), mas o tempo fica. Treinar um nível é livre; a tabela geral premia quem faz a campanha de uma vez. A alternativa, descartar a tentativa, deixaria montar a campanha só com as melhores tentativas.
+- **Demonstração no título** (`app/demo.ts`): o fundo dos menus livres (título, seleção, recordes, como jogar) é o replay dourado do L1, pulando o countdown e recomeçando ao terminar. Reaproveita a fixture (≈ 33 kB, ~+8 kB gzip no bundle) e mostra o jogo de verdade: swings, flips, mísseis. O "Como jogar" aberto da pausa não troca o estado, porque o jogo pausado continua atrás.
+- `renderer.compile` ao carregar cada nível, durante o countdown ou o menu, para não travar no primeiro frame com mísseis/explosões.
+- `ui/menus.ts` só desenha e emite intenções; redesenha só quando a tela ou o aviso mudam, para não perder o foco. Teclado: Enter no botão principal (já focado), Esc = voltar, 1–5 na seleção, R = tentar de novo.
+- Dev: `?level=N` e `?cam=free` pulam o título. Os atalhos N/J/K/R só valem na tela de jogo (nunca na demonstração).
+
+### Consequências
+- ✅ Fluxo inteiro testado em Node: tabela completa com 27 transições válidas; todas as outras combinações de tela × ação são verificadas como ignoradas; fluxo do título ao título.
+- ✅ `overlay.ts` e `scoreboard.ts` saíram; a faixa central ficou só com countdown/"Já!"/queda.
+- ⚠️ Se a config mudar (tuning pelo F2) sem regravar o replay, a demonstração diverge. Não faz mal: é só vitrine, e recomeça quando a gravação acaba.
 
 ---
 
